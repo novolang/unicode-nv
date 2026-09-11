@@ -1,0 +1,202 @@
+// uclass_tests.nv — the API suite for the category and identifier
+// predicates.
+//
+// RED ON PURPOSE: every body under `src/` is a `todo()`.
+//
+// THE CASES ARE THE UCD's `UnicodeData.txt` (the categories),
+// `PropList.txt` (White_Space) and `DerivedCoreProperties.txt`
+// (ID_Start, XID_Continue).  The ones worth reading by hand are where
+// a derived property and the category it looks like disagree.
+
+use std.test
+use udata
+use uclass
+
+@test
+fn test_the_thirty_categories_are_all_reachable() [io]
+    // A partial category enum forces the values it left out into an
+    // "other" arm, and the caller then cannot tell a private-use
+    // codepoint from an unassigned one — which is the distinction a
+    // validator most often needs.
+    let d = udata.data_full()
+
+    test.case("the letters")
+    test.assert(uclass.category(d, 0x0041) == CatUppercaseLetter)
+    test.assert(uclass.category(d, 0x0061) == CatLowercaseLetter)
+    test.assert(uclass.category(d, 0x01C5) == CatTitlecaseLetter)
+    test.assert(uclass.category(d, 0x4E16) == CatOtherLetter)
+
+    test.case("the marks, which is where width comes from")
+    test.assert(uclass.category(d, 0x0301) == CatNonspacingMark)
+    test.assert(uclass.category(d, 0x0903) == CatSpacingMark)
+
+    test.case("the numbers, which are not all digits")
+    test.assert(uclass.category(d, 0x0030) == CatDecimalNumber)
+    test.assert(uclass.category(d, 0x2160) == CatLetterNumber)
+    test.assert(uclass.category(d, 0x00BD) == CatOtherNumber)
+
+    test.case("the three that a validator has to keep apart")
+    test.assert(uclass.category(d, 0x0009) == CatControl)
+    test.assert(uclass.category(d, 0x200D) == CatFormat)
+    test.assert(uclass.category(d, 0xE000) == CatPrivateUse)
+
+    test.case("and the one every unassigned codepoint gets")
+    test.assert(uclass.category(d, 0x0378) == CatUnassigned)
+    test.assert(uclass.category(d, 0x110000) == CatUnassigned)
+
+@test
+fn test_the_abbreviations_round_trip() [io]
+    // So that a `\p{Lu}` in a pattern is resolved once at compile time
+    // rather than compared as text per character.
+    let d = udata.data_full()
+
+    test.case("the category names itself")
+    test.assert(uclass.category_abbrev(CatUppercaseLetter) == "Lu")
+    test.assert(uclass.category_abbrev(CatSpaceSeparator) == "Zs")
+
+    test.case("and a name resolves to its category")
+    test.assert(uclass.category_named("Lu") == Some(CatUppercaseLetter))
+    test.assert(uclass.category_named("Nd") == Some(CatDecimalNumber))
+
+    test.case("a string that is not one of the thirty is refused")
+    test.assert(uclass.category_named("Xx") == None)
+
+@test
+fn test_white_space_is_a_property_not_a_category() [io]
+    // PropList.txt assigns White_Space directly.  Deriving it from the
+    // Z categories gets the tab wrong in one direction and U+200B in
+    // the other, and every implementation that tries gets a different
+    // answer — which is why this reads the property.
+    test.case("the Z categories are whitespace")
+    test.assert(uclass.is_whitespace(0x0020))
+    test.assert(uclass.is_whitespace(0x2028))
+
+    test.case("and so are the C0 spaces, which are not Z at all")
+    test.assert(uclass.is_whitespace(0x0009))
+    test.assert(uclass.is_whitespace(0x000A))
+    test.assert(uclass.is_whitespace(0x000D))
+
+    test.case("a no-break space is whitespace — the property says so")
+    test.assert(uclass.is_whitespace(0x00A0))
+
+    test.case("a zero-width space is NOT — it is Cf, and not White_Space")
+    test.assert(uclass.is_whitespace(0x200B) == false)
+
+    test.case("ASCII whitespace is the narrower, five-character question")
+    test.assert(uclass.is_ascii_whitespace(0x0020))
+    test.assert(uclass.is_ascii_whitespace(0x00A0) == false)
+
+@test
+fn test_the_predicates_a_lexer_s_inner_loop_asks_take_no_data_handle() [io]
+    // The tier split made visible: these read range lists compiled in
+    // with the package, so a lexer pays no `UniData` argument and no
+    // 40 KB table to ask whether a character is a letter.
+    test.case("letter-or-number, across scripts")
+    test.assert(uclass.is_alphanumeric(0x0041))
+    test.assert(uclass.is_alphanumeric(0x0966))
+    test.assert(uclass.is_alphanumeric(0x2160))
+    test.assert(uclass.is_alphanumeric(0x0020) == false)
+
+    test.case("a control is not a letter and not whitespace-in-the-Z-sense")
+    test.assert(uclass.is_control(0x0000))
+    test.assert(uclass.is_control(0x009F))
+    test.assert(uclass.is_control(0x0041) == false)
+
+    test.case("a mark is any of Mn, Mc or Me")
+    test.assert(uclass.is_mark(0x0301))
+    test.assert(uclass.is_mark(0x0903))
+    test.assert(uclass.is_mark(0x0041) == false)
+
+    test.case("case is the PROPERTY, not the Lu and Ll categories")
+    test.assert(uclass.is_uppercase(0x0041))
+    test.assert(uclass.is_lowercase(0x0061))
+    test.assert(uclass.is_uppercase(0x0061) == false)
+    test.assert(uclass.is_lowercase(0x4E16) == false)
+
+@test
+fn test_the_commonmark_pair_markdown_nv_depends_on() [io]
+    // markdown-nv's emphasis rules are written in terms of "Unicode
+    // whitespace" and "Unicode punctuation", and as of CommonMark 0.30
+    // the second means the P categories AND the S categories.  Getting
+    // this wrong makes `*a*` and `*a *` render the same way.
+    test.case("punctuation is the P categories")
+    test.assert(uclass.is_punctuation(0x002E))
+    test.assert(uclass.is_punctuation(0x005F))
+    test.assert(uclass.is_punctuation(0x00AB))
+
+    test.case("a symbol is not punctuation, and CommonMark wants both")
+    test.assert(uclass.is_punctuation(0x002B) == false)
+    test.assert(uclass.is_symbol(0x002B))
+    test.assert(uclass.is_symbol(0x0024))
+
+    test.case("a letter is neither")
+    test.assert(uclass.is_punctuation(0x0061) == false)
+    test.assert(uclass.is_symbol(0x0061) == false)
+
+@test
+fn test_uax31_is_what_a_tokenizer_wants() [io]
+    // A lexer built on "is a letter or an underscore" disagrees with
+    // every other language about the same source file.
+    test.case("a letter may begin an identifier")
+    test.assert(uclass.is_id_start(0x0041))
+    test.assert(uclass.is_id_start(0x03B1))
+
+    test.case("a digit may not begin one but may continue one")
+    test.assert(uclass.is_id_start(0x0030) == false)
+    test.assert(uclass.is_id_continue(0x0030))
+
+    test.case("UAX #31 does not add the underscore, and neither does this")
+    test.assert(uclass.is_id_start(0x005F) == false)
+    test.assert(uclass.is_id_continue(0x005F))
+
+    test.case("a combining mark continues an identifier — Devanagari needs it")
+    test.assert(uclass.is_id_continue(0x0903))
+
+@test
+fn test_xid_is_the_form_that_survives_normalisation() [io]
+    // U+2126 OHM SIGN is ID_Start and NOT XID_Start, because NFKC maps
+    // it to U+03A9 and the result would no longer be an identifier
+    // start under the same rules.  A language comparing identifiers
+    // after NFKC must use the XID forms or two visually identical
+    // identifiers become different symbols.
+    test.case("the ohm sign starts an ID but not an XID")
+    test.assert(uclass.is_id_start(0x2126))
+    test.assert(uclass.is_xid_start(0x2126) == false)
+
+    test.case("an ordinary letter is both")
+    test.assert(uclass.is_xid_start(0x0041))
+    test.assert(uclass.is_xid_continue(0x0030))
+
+@test
+fn test_the_ascii_predicates_answer_a_narrower_question() [io]
+    // They are not a fast path for the Unicode ones: a caller that
+    // uses them on non-ASCII text is not approximating, it is getting
+    // false.
+    test.case("ASCII digits are ASCII digits")
+    test.assert(uclass.is_ascii_digit(0x0030))
+    test.assert(uclass.is_ascii(0x007F))
+
+    test.case("a Devanagari digit is a digit and is not an ASCII digit")
+    test.assert(uclass.is_digit(0x0966))
+    test.assert(uclass.is_ascii_digit(0x0966) == false)
+    test.assert(uclass.is_ascii(0x0966) == false)
+
+    test.case("and a Greek letter is a letter and is not an ASCII letter")
+    test.assert(uclass.is_letter(0x03B1))
+    test.assert(uclass.is_ascii_alpha(0x03B1) == false)
+
+@test
+fn test_a_scalar_value_is_the_check_every_decoder_owes_its_caller() [io]
+    // A numeric character reference in HTML and a `\u` escape in JSON
+    // both produce an integer that may not be text.
+    test.case("an ordinary codepoint is a scalar value")
+    test.assert(uclass.is_valid_scalar(0x0041))
+    test.assert(uclass.is_valid_scalar(0x10FFFF))
+
+    test.case("a surrogate is not")
+    test.assert(uclass.is_valid_scalar(0xD800) == false)
+    test.assert(uclass.is_valid_scalar(0xDFFF) == false)
+
+    test.case("and neither is anything above the range")
+    test.assert(uclass.is_valid_scalar(0x110000) == false)
+    test.assert(uclass.is_valid_scalar(0 - 1) == false)

@@ -1,0 +1,180 @@
+// unorm.nv — the four normalisation forms of UAX #15.
+//
+// Every body here is a `todo()`; the signatures are the design.
+
+use udata
+
+// WHY NORMALISE.  "é" is two different strings: one codepoint, or an
+// "e" followed by a combining acute.  They look identical, they mean
+// the same thing, and `==` says they are different.  Every filename
+// comparison, every login, every cache key and every deduplication
+// over text a user typed is wrong until one of them has normalised.
+//
+// The macOS filesystem hands out NFD; almost everything else hands
+// out NFC; a form that came through an IME may be neither.  A program
+// that compares text from two sources and has not normalised has a
+// bug it will find in production, on a name with an accent in it.
+//
+// EVERY FUNCTION HERE TAKES A `UniData` because the decomposition
+// tables are the largest thing in this package — about 190 KB
+// generated.  `udata.nv` argues why that is a parameter rather than a
+// global.
+//
+// THE CHEAP PATH IS A FIRST-CLASS ANSWER.  Most text is already NFC,
+// and a normaliser that allocates a copy to discover that is a
+// normaliser a program will stop calling.  `quick_check` answers
+// yes/no/maybe from a single table lookup per codepoint with no
+// allocation at all, and `compare` decides canonical equivalence
+// without materialising either normalised form.  Those two are what
+// a hot path should call; `normalize` is for when the normalised
+// string is what you actually need to keep.
+
+// UniForm is which normalisation form.
+pub enum UniForm
+    // NFD — canonical decomposition.  "é" becomes "e" plus a
+    // combining acute, and the marks are sorted into canonical order.
+    FormNfd
+    // NFC — canonical decomposition, then canonical composition.  The
+    // form the web platform specifies, and the one to store text in.
+    FormNfc
+    // NFKD — compatibility decomposition.  The ligature "ﬁ" becomes
+    // "fi", the superscript "²" becomes "2", the fullwidth forms
+    // become their narrow ones.  LOSSY, on purpose.
+    FormNfkd
+    // NFKC — compatibility decomposition, then canonical composition.
+    // What an identifier comparison should use, and what a search
+    // index should fold to.  Also lossy: do not store the result in
+    // place of the original.
+    FormNfkc
+
+// UniQuickCheck is the answer to "is this already in the form".
+pub enum UniQuickCheck
+    // Certainly yes.  Nothing to do, and no copy was made to find
+    // out.
+    QcYes
+    // Certainly no.  Normalising will change the string.
+    QcNo
+    // Possibly.  The string holds codepoints that may or may not be
+    // in order — deciding needs the full algorithm.  A caller that
+    // wants a definite answer calls `is_normalized`, which runs it.
+    QcMaybe
+
+// normalize is the string in the requested form.
+//
+// Allocates a new string.  A string already in the form is returned
+// as it was — no copy — which is what makes calling this on text that
+// is usually already normalised affordable.
+//
+// ```novo
+// use udata
+// use unorm
+//
+// fn main() [io]
+//     let d = udata.data_full()
+//     let nfc = unorm.normalize(d, "some text", FormNfc)
+//     println(nfc)
+// ```
+pub fn normalize(d: udata.UniData, text: Str, form: UniForm) -> Str []
+    todo("unicode-nv.unorm.normalize")
+
+// normalize_into appends the normalised text to a caller's buffer.
+//
+// The allocation-free half: the caller owns the buffer, the function
+// appends, and a program normalising a stream of strings reuses one
+// buffer instead of producing one string per input.  The same shape
+// numfmt-nv and ansi-nv use for the same reason.
+pub fn normalize_into(out: [u8], d: udata.UniData, text: Str, form: UniForm) -> [u8] []
+    todo("unicode-nv.unorm.normalize_into")
+
+// quick_check is UAX #15's quick check, which never allocates.
+//
+// One table lookup per codepoint, and it stops at the first
+// codepoint that makes the answer `QcNo`.  This is the function to
+// call before `normalize` in anything hot.
+pub fn quick_check(d: udata.UniData, text: Str, form: UniForm) -> UniQuickCheck []
+    todo("unicode-nv.unorm.quick_check")
+
+// is_normalized is the definite answer.
+//
+// Runs the full algorithm when `quick_check` says `QcMaybe`, so it is
+// never wrong and sometimes slower.  It still allocates nothing: it
+// compares as it goes rather than building the normalised form.
+pub fn is_normalized(d: udata.UniData, text: Str, form: UniForm) -> Bool []
+    todo("unicode-nv.unorm.is_normalized")
+
+// compare decides canonical equivalence without normalising either
+// side.
+//
+// The function most callers actually want.  "Are these two strings
+// the same name" is answered by walking both in normalised order and
+// comparing as it goes — no allocation, and it stops at the first
+// difference, where normalising both would have built two strings to
+// throw away.
+//
+// Negative, zero or positive, ordered by the normalised forms, so it
+// can also be a sort key comparator.
+pub fn compare(d: udata.UniData, a: Str, b: Str, form: UniForm) -> Int []
+    todo("unicode-nv.unorm.compare")
+
+// equivalent is `compare(...) == 0`, named for the question it
+// answers.
+pub fn equivalent(d: udata.UniData, a: Str, b: Str, form: UniForm) -> Bool []
+    todo("unicode-nv.unorm.equivalent")
+
+// combining_class is a codepoint's Canonical_Combining_Class.
+//
+// 0 for a starter — a base character — and 1 to 254 for the marks
+// that reorder around one.  The primitive canonical ordering is
+// defined in terms of, exposed because a caller writing its own
+// mark-aware algorithm (a cursor that moves over a base and its
+// marks, a renderer stacking diacritics) needs it and should not have
+// to reimplement the table.
+pub fn combining_class(d: udata.UniData, ch: Int) -> Int []
+    todo("unicode-nv.unorm.combining_class")
+
+// decompose_char is a single codepoint's decomposition.
+//
+// The canonical one when `compat` is false, the compatibility one
+// when it is true.  RECURSIVE — the result is fully decomposed, so a
+// caller does not have to loop — and it is the codepoint itself, as a
+// one-element list, when there is no decomposition.
+//
+// Hangul is computed rather than tabulated, per UAX #15 § 3.12, and
+// answers here exactly as if it were.
+pub fn decompose_char(d: udata.UniData, ch: Int, compat: Bool) -> [Int] []
+    todo("unicode-nv.unorm.decompose_char")
+
+// compose_pair is the primary composite of a starter and a combining
+// codepoint, if there is one.
+//
+// `None` when the pair does not compose, when the composite is in the
+// composition exclusion table, or when the first codepoint is not a
+// starter.  The excluded ones are the reason this is a function and
+// not a reversal of `decompose_char`: a composite that decomposes
+// does not necessarily recompose, and a normaliser that assumed it
+// did would produce text that is not NFC.
+pub fn compose_pair(d: udata.UniData, starter: Int, combining: Int) -> ?Int []
+    todo("unicode-nv.unorm.compose_pair")
+
+// is_starter answers whether the codepoint has combining class 0.
+//
+// The boundary the whole algorithm is chunked at: a normaliser can
+// process text one starter-to-starter run at a time, which is what
+// makes streaming normalisation possible and what bounds the buffer
+// it needs.
+pub fn is_starter(d: udata.UniData, ch: Int) -> Bool []
+    todo("unicode-nv.unorm.is_starter")
+
+// stream_boundary is the byte offset of the last position in `text`
+// at which normalisation can safely stop.
+//
+// For a caller normalising a stream: it hands over what it has,
+// learns how much of it was safe to emit, and keeps the tail for the
+// next chunk.  Without this a streaming normaliser either buffers the
+// whole document or produces a wrong answer at every chunk edge — and
+// the chunk edge is exactly where a combining mark will be.
+//
+// Zero when no position in the chunk is safe, which is what a chunk
+// that is entirely combining marks deserves.
+pub fn stream_boundary(d: udata.UniData, text: Str, form: UniForm) -> Int []
+    todo("unicode-nv.unorm.stream_boundary")

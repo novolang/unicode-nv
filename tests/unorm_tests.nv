@@ -1,0 +1,207 @@
+// unorm_tests.nv — the API suite for normalisation.
+//
+// RED ON PURPOSE: every body under `src/` is a `todo()`.
+//
+// THE CASES ARE UAX #15's OWN.  Every one below is a line of
+// `NormalizationTest.txt`, cited by the codepoints the file lists, and
+// the whole file — about 19,000 lines — becomes a generated suite
+// beside this one when the implementation lands.  These are the ones
+// that explain WHY each rule is there.
+
+use std.test
+use std.list
+use udata
+use unorm
+
+@test
+fn test_the_canonical_pair_every_program_gets_wrong() [io]
+    // NormalizationTest.txt: 00C5 ; 00C5 ; 0041 030A ; …
+    // "Å" as one codepoint and "A" plus a combining ring are the same
+    // text.  `==` says they are not.  Every filename comparison and
+    // every login is this case.
+    let d = udata.data_full()
+
+    test.case("NFD takes the composite apart")
+    test.assert(unorm.normalize(d, "\u{00C5}", FormNfd) == "A\u{030A}")
+
+    test.case("NFC puts it back together")
+    test.assert(unorm.normalize(d, "A\u{030A}", FormNfc) == "\u{00C5}")
+
+    test.case("and they are canonically equivalent without normalising either")
+    test.assert(unorm.equivalent(d, "\u{00C5}", "A\u{030A}", FormNfc))
+
+@test
+fn test_the_angstrom_sign_is_a_singleton() [io]
+    // NormalizationTest.txt: 212B ; 00C5 ; 0041 030A ; …
+    // U+212B ANGSTROM SIGN decomposes to the same thing and composes
+    // to U+00C5 rather than back to itself.  A normaliser that simply
+    // reversed its decomposition table would round-trip to 212B, and
+    // the two strings would still compare unequal.
+    let d = udata.data_full()
+
+    test.case("NFC of the angstrom sign is the letter, not the sign")
+    test.assert(unorm.normalize(d, "\u{212B}", FormNfc) == "\u{00C5}")
+
+    test.case("so the sign and the letter are equivalent")
+    test.assert(unorm.equivalent(d, "\u{212B}", "\u{00C5}", FormNfc))
+
+@test
+fn test_combining_marks_are_reordered_by_class() [io]
+    // NormalizationTest.txt: 1E0A 0323 ; 1E0C 0307 ; 0044 0323 0307 ; …
+    // A dot above and a dot below have different combining classes, so
+    // the canonical order puts the below first WHATEVER order they
+    // were typed in.  Without that, two identically-rendered strings
+    // normalise differently.
+    let d = udata.data_full()
+
+    test.case("the marks come out in canonical class order")
+    test.assert(unorm.normalize(d, "\u{1E0A}\u{0323}", FormNfd) == "D\u{0323}\u{0307}")
+
+    test.case("and compose onto the letter that takes the lower class")
+    test.assert(unorm.normalize(d, "\u{1E0A}\u{0323}", FormNfc) == "\u{1E0C}\u{0307}")
+
+    test.case("the classes themselves are what decides it")
+    test.assert(unorm.combining_class(d, 0x0323) == 220)
+    test.assert(unorm.combining_class(d, 0x0307) == 230)
+    test.assert(unorm.combining_class(d, 0x0041) == 0)
+    test.assert(unorm.is_starter(d, 0x0041))
+
+@test
+fn test_compatibility_is_lossy_and_says_so() [io]
+    // NormalizationTest.txt: FB01 ; FB01 ; FB01 ; 0066 0069 ; 0066 0069
+    // The "fi" ligature is unchanged by NFC and becomes two letters
+    // under NFKC.  That is a search key, not a replacement for the
+    // text.
+    let d = udata.data_full()
+
+    test.case("NFC leaves the ligature alone")
+    test.assert(unorm.normalize(d, "\u{FB01}", FormNfc) == "\u{FB01}")
+
+    test.case("NFKC takes it apart, and the original is not recoverable")
+    test.assert(unorm.normalize(d, "\u{FB01}", FormNfkc) == "fi")
+
+    test.case("a superscript two becomes a two — 00B2 ; … ; 0032 ; 0032")
+    test.assert(unorm.normalize(d, "\u{00B2}", FormNfkc) == "2")
+
+    test.case("and the decomposition asked for directly agrees")
+    test.assert(list.len(unorm.decompose_char(d, 0xFB01, true)) == 2)
+    test.assert(list.len(unorm.decompose_char(d, 0xFB01, false)) == 1)
+
+@test
+fn test_hangul_is_computed_rather_than_tabulated() [io]
+    // NormalizationTest.txt: D4DB ; D4DB ; 1111 1171 11B6 ; …
+    // UAX #15 § 3.12 gives Hangul its own arithmetic instead of
+    // 11,172 table rows.  A caller cannot tell, and that is the test.
+    let d = udata.data_full()
+
+    test.case("a syllable decomposes into its jamo")
+    test.assert(unorm.normalize(d, "\u{D4DB}", FormNfd) == "\u{1111}\u{1171}\u{11B6}")
+
+    test.case("and composes back")
+    test.assert(unorm.normalize(d, "\u{1111}\u{1171}\u{11B6}", FormNfc) == "\u{D4DB}")
+
+@test
+fn test_composition_exclusions_do_not_recompose() [io]
+    // U+0344 COMBINING GREEK DIALYTIKA TONOS decomposes to 0308 0301
+    // and is in the composition exclusion table, so NFC leaves the
+    // two marks apart.  A normaliser that treated composition as the
+    // inverse of decomposition would produce text that is not NFC and
+    // would still call it NFC.
+    let d = udata.data_full()
+
+    test.case("the pair does not compose back")
+    test.assert(unorm.compose_pair(d, 0x0308, 0x0301) == None)
+
+    test.case("a pair that is not excluded does")
+    test.assert(unorm.compose_pair(d, 0x0041, 0x030A) == Some(0x00C5))
+
+    test.case("and a non-starter first argument never composes")
+    test.assert(unorm.compose_pair(d, 0x0301, 0x0041) == None)
+
+@test
+fn test_the_cheap_path_is_a_first_class_answer() [io]
+    // Most text is already NFC.  A normaliser that allocates a copy to
+    // discover that is one a program stops calling in its hot path.
+    let d = udata.data_full()
+
+    test.case("plain ASCII is certainly already normalised")
+    test.assert(unorm.quick_check(d, "hello", FormNfc) == QcYes)
+    test.assert(unorm.is_normalized(d, "hello", FormNfc))
+
+    test.case("a decomposed sequence is certainly not NFC")
+    test.assert(unorm.quick_check(d, "A\u{030A}", FormNfc) == QcNo)
+    test.assert(unorm.is_normalized(d, "A\u{030A}", FormNfc) == false)
+
+    test.case("a composite is certainly already NFC")
+    test.assert(unorm.quick_check(d, "\u{00C5}", FormNfc) == QcYes)
+
+    test.case("and normalising something already in the form returns it")
+    test.assert(unorm.normalize(d, "hello", FormNfc) == "hello")
+
+@test
+fn test_compare_orders_by_the_normalised_form_without_building_it() [io]
+    let d = udata.data_full()
+
+    test.case("equivalent strings compare equal whichever spelling arrived")
+    test.assert(unorm.compare(d, "\u{00C5}", "A\u{030A}", FormNfc) == 0)
+
+    test.case("and unequal ones order consistently in both directions")
+    test.assert(unorm.compare(d, "a", "b", FormNfc) < 0)
+    test.assert(unorm.compare(d, "b", "a", FormNfc) > 0)
+
+@test
+fn test_streaming_needs_a_safe_place_to_stop() [io]
+    // A chunk edge is exactly where a combining mark will be.  A
+    // streaming normaliser that emitted its whole chunk would compose
+    // a base with the marks it had and then meet another mark.
+    let d = udata.data_full()
+
+    test.case("a chunk ending on a starter is safe up to that starter")
+    test.assert(unorm.stream_boundary(d, "abc", FormNfc) == 2)
+
+    test.case("a chunk that is all combining marks has no safe point")
+    test.assert(unorm.stream_boundary(d, "\u{0301}\u{0308}", FormNfc) == 0)
+
+@test
+fn test_the_data_handle_declares_what_it_can_answer_for() [io]
+    test.case("the full tables cover everything and name their version")
+    let full = udata.data_full()
+    test.assert(udata.data_version(full) == UNICODE_VERSION)
+    test.assert(full.complete)
+    test.assert(udata.data_covers(full, 0x1F600))
+
+    test.case("the compact tier says so rather than answering wrongly")
+    let small = udata.data_compact()
+    test.assert(small.complete == false)
+    test.assert(udata.data_covers(small, 0x00C5))
+    test.assert(udata.data_covers(small, 0x1F600) == false)
+
+    test.case("and bytes that are not a pack are refused rather than indexed into")
+    test.assert(udata.data_from_pack([]) == None)
+
+    test.case("the packed form round-trips, so a build step can produce one")
+    let blob = udata.pack_bytes([], full)
+    test.assert(list.len(blob) > 0)
+    match udata.data_from_pack(blob)
+        None       =>
+            test.assert(false)
+        Some(back) =>
+            test.assert(udata.data_version(back) == UNICODE_VERSION)
+
+@test
+fn test_normalize_into_appends_rather_than_allocating() [io]
+    // The allocation-free half: a program normalising a stream of
+    // strings reuses one buffer instead of producing one string per
+    // input.
+    let d = udata.data_full()
+
+    test.case("the buffer comes back with the text appended")
+    let out = udata_buffer(d)
+    test.assert(list.len(out) == 2)
+
+    test.case("and an existing prefix is kept")
+    let out2 = unorm.normalize_into(out, d, "c", FormNfc)
+    test.assert(list.len(out2) == 3)
+
+fn udata_buffer(d: udata.UniData) -> [u8] [io]
+    unorm.normalize_into([], d, "ab", FormNfc)

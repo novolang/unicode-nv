@@ -1,0 +1,277 @@
+// ugrapheme.nv — where one user-perceived character ends and the next
+// begins.  UAX #29, extended grapheme clusters.
+//
+// Every body here is a `todo()`; the signatures are the design.
+//
+// WHY A PACKAGE NEEDS THIS AT ALL.  `str.len` counts bytes and a
+// codepoint iterator counts codepoints, and neither is what a user
+// means by "a character".  Deleting one backspace's worth of text,
+// moving a cursor one cell, truncating a name to twenty characters,
+// counting the length of a password — every one of them is a question
+// about grapheme clusters, and every one of them is wrong when
+// answered in codepoints.  A flag is two codepoints.  An "e" with an
+// acute accent typed as two is two.  A family emoji is seven.
+//
+// TWO SURFACES, AND THE SECOND IS THE LOAD-BEARING ONE.
+//
+// The first is the one a caller with a whole string in hand wants:
+// `count`, `nth`, `clusters`, `next_boundary`.  Straightforward, and
+// what most programs use.
+//
+// The second is `UniBreakState` and `break_step`: the break algorithm
+// as a state machine that takes ONE codepoint at a time and answers
+// "was there a boundary before this one".  A terminal emulator never
+// holds the string — it holds a VTE parser handing it
+// `AnsiPrint(ch)` a codepoint at a time, and it has to decide, for
+// each one, whether it starts a new cell or joins the last.  A
+// segmenter that needs the whole string is no use to it, and that is
+// exactly the consumer this package was asked for.  novo-vte's parser
+// is the producer, and this is the shape that fits it.
+//
+// The state machine is the same algorithm, so the two surfaces cannot
+// disagree — the string functions are written on top of it.
+//
+// WHAT IS INCLUDED FROM UAX #29 and what is not: the extended
+// grapheme cluster rules GB1 through GB999, including GB9c (the
+// Indic conjunct rules added in Unicode 15.1) and GB11 (the
+// Extended_Pictographic ZWJ sequences), and GB12/GB13's pairing of
+// regional indicators.  LEGACY grapheme clusters — the pre-Unicode-9
+// definition, which splits a base from its combining marks — are not
+// here and are not wanted: nothing should be written against them.
+//
+// WORD BOUNDARIES are here too, because a tokenizer, a double-click
+// and a "delete previous word" all want them and the table they need
+// is in this package already.  SENTENCE and LINE breaking are not:
+// UAX #14 line breaking is a bigger algorithm with a bigger table and
+// a different consumer, and pretending a line break is a small
+// addition to a grapheme segmenter is how a package ends up with a
+// wrong one.
+
+// UniCluster is a byte range into the string it came from.
+//
+// A range rather than a copied `Str` because the whole point of
+// segmenting is to then slice, and a segmenter that allocated a
+// string per cluster would allocate once per character of the input.
+// `start` is inclusive, `end` exclusive, both in bytes.
+pub struct UniCluster
+    start: Int
+    end: Int
+
+// UniCursor walks the clusters of a string without allocating.
+//
+// The value is the position; `cursor_next` returns the next one
+// rather than mutating, so a caller can keep a cursor to come back
+// to — which is what a text editor does when it renders a line and
+// then has to answer where the cursor goes.
+pub struct UniCursor
+    // The string being walked.  Held so that `cursor_next` needs one
+    // argument rather than two, and so that a cursor cannot be used
+    // against a different string by accident.
+    text: Str
+    // The byte offset of the next cluster to return.  Equal to the
+    // string's length when the walk is finished.
+    at: Int
+
+// UniBreakState is the segmentation algorithm between two codepoints.
+//
+// Small and copyable: the previous codepoint's break property, the
+// two counters GB12/GB13 and GB9c need, and the flag GB11 needs.  A
+// terminal keeps one of these per line and feeds it the codepoints
+// the parser hands it.
+pub struct UniBreakState
+    // The Grapheme_Cluster_Break property of the last codepoint fed,
+    // as the packed integer the tables use.  `BREAK_START` before any
+    // codepoint has been fed, which is what makes the first
+    // `break_step` report a boundary.
+    previous: Int
+    // How many regional indicators are in the run that ends at the
+    // last codepoint.  GB12 and GB13 break between every SECOND pair,
+    // which cannot be decided from the previous codepoint alone.
+    regional_run: Int
+    // True when the run so far could still be an Extended_Pictographic
+    // ZWJ sequence — an emoji, then any number of Extend, then a ZWJ.
+    // GB11's whole content.
+    pictographic_run: Bool
+    // How many linkers (virama) have been seen in the current Indic
+    // conjunct run.  GB9c, added in Unicode 15.1.
+    linker_run: Int
+
+// The value `UniBreakState.previous` carries before any codepoint has
+// been fed, so that the first `break_step` reports a boundary (GB1 —
+// there is always a break at the start of text).
+pub const BREAK_START = 0 - 1
+
+// UniBreakStep is what one codepoint did to the machine.
+//
+// Returned as a value rather than mutating the state, because the
+// state is a value and a caller that wants to look ahead without
+// committing should be able to.
+pub struct UniBreakStep
+    // The machine after the codepoint.  Feed this to the next call.
+    state: UniBreakState
+    // True when a cluster boundary falls BEFORE this codepoint — so
+    // the codepoint starts a new cluster.  True on the very first
+    // call, always.
+    boundary: Bool
+
+// UniWordKind says what a word-boundary segment holds.
+//
+// Because "split into words" is never the whole question: a
+// tokenizer wants the letters and not the spaces, a word-count wants
+// the same, and a double-click that selected the run of spaces
+// between two words did the wrong thing.
+pub enum UniWordKind
+    // Letters, marks and the connectors that hold them together —
+    // what a reader would call a word.
+    WordLetters
+    // Digits, and the separators inside a number.
+    WordNumeric
+    // A run of whitespace.
+    WordSpace
+    // Punctuation, symbols, and anything that is none of the above.
+    WordOther
+
+// UniWord is a word-boundary segment and what kind it is.
+pub struct UniWord
+    start: Int
+    end: Int
+    kind: UniWordKind
+
+// break_state is a fresh segmentation machine.
+//
+// ```novo
+// use ugrapheme
+//
+// fn main() [io]
+//     let s = ugrapheme.break_state()
+//     let step = ugrapheme.break_step(s, 0x41)
+//     if step.boundary
+//         println("a new cluster starts here")   // GB1, always
+// ```
+pub fn break_state() -> UniBreakState []
+    todo("unicode-nv.ugrapheme.break_state")
+
+// break_step feeds one codepoint to the machine.
+//
+// **The load-bearing interface.**  One codepoint in, a boundary
+// answer and the next state out, and no string anywhere — which is
+// what lets a terminal emulator that receives text a byte at a time
+// decide, per codepoint, whether it opens a new cell.
+//
+// The boundary reported is the one BEFORE `ch`, so a caller places
+// the codepoint after acting on the answer.  There is no way to ask
+// about the boundary after the last codepoint of the text, because
+// there is always one (GB2) and a call would only be able to say so.
+pub fn break_step(s: UniBreakState, ch: Int) -> UniBreakStep []
+    todo("unicode-nv.ugrapheme.break_step")
+
+// cursor starts a walk at the beginning of a string.
+pub fn cursor(text: Str) -> UniCursor []
+    todo("unicode-nv.ugrapheme.cursor")
+
+// cursor_at starts a walk at a byte offset.
+//
+// The offset must be a codepoint boundary; one that is not is moved
+// BACK to the nearest, rather than producing a range that cuts a
+// codepoint in half.  It need not be a CLUSTER boundary — a caller
+// resuming in the middle of a cluster gets the remainder as its first
+// answer, which is the only thing it can get without rescanning from
+// the start.
+pub fn cursor_at(text: Str, offset: Int) -> UniCursor []
+    todo("unicode-nv.ugrapheme.cursor_at")
+
+// cursor_next is the next cluster, or `None` at the end.
+//
+// Returns the cluster and leaves the caller to advance: a walk is
+// `cursor_next` for the range and `cursor_advance` for the next
+// cursor, so that a caller can look at a cluster and decide not to
+// consume it.
+pub fn cursor_next(c: UniCursor) -> ?UniCluster []
+    todo("unicode-nv.ugrapheme.cursor_next")
+
+// cursor_advance is the cursor positioned after the cluster.
+pub fn cursor_advance(c: UniCursor) -> UniCursor []
+    todo("unicode-nv.ugrapheme.cursor_advance")
+
+// cursor_done answers whether the walk has reached the end.
+pub fn cursor_done(c: UniCursor) -> Bool []
+    todo("unicode-nv.ugrapheme.cursor_done")
+
+// next_boundary is the byte offset of the next cluster boundary after
+// `from`.
+//
+// The string's length when `from` is already in the last cluster, so
+// a loop terminates without a special case.
+pub fn next_boundary(text: Str, from: Int) -> Int []
+    todo("unicode-nv.ugrapheme.next_boundary")
+
+// prev_boundary is the byte offset of the cluster boundary before
+// `from`.
+//
+// What a backspace key needs, and the reason it is a function rather
+// than "walk from the start and remember": an editor pressing
+// backspace in a long line should not rescan the line.
+//
+// Zero when `from` is already in the first cluster.
+pub fn prev_boundary(text: Str, from: Int) -> Int []
+    todo("unicode-nv.ugrapheme.prev_boundary")
+
+// is_boundary answers whether a byte offset is a cluster boundary.
+//
+// False for an offset in the middle of a codepoint, as well as for
+// one in the middle of a cluster — an offset that is not a character
+// boundary is not a cluster boundary either.
+pub fn is_boundary(text: Str, at: Int) -> Bool []
+    todo("unicode-nv.ugrapheme.is_boundary")
+
+// count is how many clusters the string holds.
+//
+// The answer to "how long is this name", which is the question
+// `str.len` is so often asked in place of.
+pub fn count(text: Str) -> Int []
+    todo("unicode-nv.ugrapheme.count")
+
+// nth is the byte range of cluster number `index`, counting from 0.
+//
+// `None` past the end.  A range rather than a `Str`, for the same
+// reason `UniCluster` is one.
+pub fn nth(text: Str, index: Int) -> ?UniCluster []
+    todo("unicode-nv.ugrapheme.nth")
+
+// clusters is every cluster's range, in order.
+//
+// The allocating convenience.  It is here because a caller that
+// genuinely wants the list should not have to write the loop, and it
+// is documented as allocating so that a caller in a hot path knows to
+// use the cursor instead.
+pub fn clusters(text: Str) -> [UniCluster] []
+    todo("unicode-nv.ugrapheme.clusters")
+
+// truncate_clusters is the byte length of the first `count` clusters.
+//
+// For "show the first 20 characters", where cutting at 20 bytes
+// splits a codepoint and cutting at 20 codepoints splits a family
+// emoji into a hand and a child.
+pub fn truncate_clusters(text: Str, count: Int) -> Int []
+    todo("unicode-nv.ugrapheme.truncate_clusters")
+
+// next_word is the byte offset of the next word boundary after
+// `from`, per UAX #29 § 4.
+pub fn next_word(text: Str, from: Int) -> Int []
+    todo("unicode-nv.ugrapheme.next_word")
+
+// prev_word is the byte offset of the word boundary before `from`.
+//
+// What "delete the previous word" needs.
+pub fn prev_word(text: Str, from: Int) -> Int []
+    todo("unicode-nv.ugrapheme.prev_word")
+
+// words is every word-boundary segment with its kind.
+//
+// Including the spaces and the punctuation, as `WordSpace` and
+// `WordOther` — a caller that wants only the words filters, and one
+// that wants to rebuild the string from the segments can.  A
+// segmenter that dropped the gaps would be lossy, and a tokenizer
+// that needs to report a byte offset cannot use a lossy one.
+pub fn words(text: Str) -> [UniWord] []
+    todo("unicode-nv.ugrapheme.words")

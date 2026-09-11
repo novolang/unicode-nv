@@ -1,0 +1,180 @@
+// udata.nv — the Unicode tables, and where they live.
+//
+// Every body here is a `todo()`; the signatures are the design.
+//
+// THIS MODULE IS THE PACKAGE'S ONE REAL DECISION.  Everything else in
+// unicode-nv is a lookup; the question is where the data being looked
+// up comes from, and a `core` package cannot read a file to find out.
+//
+// THE SIZES, MEASURED OFF UNICODE 16.0's UCD, are why there is more
+// than one answer:
+//
+//   display width        East Asian Wide/Fullwidth + the zero-width
+//                        categories Mn, Me, Cf, and the emoji
+//                        presentation ranges        ~500 ranges, ~4 KB
+//   grapheme breaks      the UAX #29 Grapheme_Cluster_Break property
+//                        plus Extended_Pictographic  ~1400 ranges, ~11 KB
+//   identifier classes   XID_Start and XID_Continue  ~1500 ranges, ~12 KB
+//   general category     every codepoint's category  ~3800 ranges, ~40 KB
+//   case mapping         simple + special + folding  ~3000 entries, ~55 KB
+//   normalisation        canonical and compatibility decompositions,
+//                        the composition exclusions, and the combining
+//                        classes                    ~19000 entries, ~190 KB
+//
+// A device with 256 KB of flash can hold the first two.  It cannot
+// hold the last two and still be a program.  So the package does not
+// have one table: it has a tier that is always there and a tier the
+// caller asks for by name.
+//
+// TIER ONE — ALWAYS COMPILED IN, NO ARGUMENT.  `uwidth`, `ugrapheme`
+// and the predicates in `uclass` read tables that are constants in
+// this package and take no data parameter at all.  That is not a
+// convenience: textwrap-nv's `WrapWidth` holds ONE `fn(Int) -> Int`,
+// and a width function with a table parameter cannot be the value it
+// holds.  The consumer's signature decided this one, and the sizes
+// above say the decision is affordable.
+//
+// TIER TWO — COMPILED IN, BUT ASKED FOR BY NAME.  `unorm` and `ucase`
+// take a `UniData`, and `data_full()` is the constructor that hands
+// them the generated tables.  A program that never calls either never
+// names `data_full`, so the linker never has a reason to keep 245 KB
+// of tables it cannot reach.  The parameter is the disclosure: a
+// reader of a signature sees that normalising costs a table, where a
+// free function would have hidden it.
+//
+// TIER THREE — PARSED FROM BYTES THE HOST READ.  `data_from_pack`
+// takes the same tables as a byte slice the caller got from
+// somewhere — a file, a flash region, an HTTP response — and the
+// parse is arithmetic, so `core` stays sans-IO and the firmware that
+// genuinely needs normalisation can keep the tables out of its text
+// section.  This is the answer to "the embedded tier cannot carry all
+// of them": it does not have to carry them, it has to be able to
+// reach them.
+//
+// WHAT WAS REJECTED, and why, because the rejected options are the
+// ones a reader will ask about:
+//
+//   A caller-supplied table for EVERYTHING.  It would make the width
+//   function take two arguments and stop it being the value
+//   textwrap-nv already accepts, and it would push a table nobody
+//   wants to think about into every call site in a terminal.
+//
+//   A build flag — `@tier(embedded)` selecting a smaller table.  A
+//   package whose ANSWERS change with a build flag is a package whose
+//   tests prove nothing about the build a user makes, and a string
+//   that normalises differently on two targets is worse than one that
+//   does not normalise at all.
+//
+//   Loading the UCD text files at run time.  `core` may not read, the
+//   files are 2 MB of ASCII, and parsing `UnicodeData.txt` at start-up
+//   is a cost every program pays for a table that never changes.
+//   `data_from_pack` takes the PACKED form for exactly that reason.
+
+// The Unicode version every table in this package is generated from.
+//
+// It is public because a caller comparing two systems' normalisation
+// needs to know whether they agree about what Unicode is, and because
+// a bug report that does not name the version is a bug report about
+// nothing.
+pub const UNICODE_VERSION = "16.0.0"
+
+// The magic at the front of a packed table blob, so that
+// `data_from_pack` can refuse a file that is not one rather than
+// index into it.
+pub const PACK_MAGIC = "NVUNI1"
+
+// UniData is the tables that are too big to be free.
+//
+// Normalisation and full case mapping need a quarter of a megabyte of
+// generated data.  This value is how a caller says it wants them, and
+// carrying it in the signature of every function that needs them is
+// how a reader sees the cost without reading the implementation.
+//
+// It is a handle, not a copy: `data_full()` returns a view over
+// constants already in the binary and allocates nothing.
+pub struct UniData
+    // Which Unicode version the tables behind this handle describe.
+    // `data_full()` answers `UNICODE_VERSION`; `data_from_pack` answers
+    // whatever the blob was generated from, which is how a caller
+    // catches a stale pack.
+    version: Str
+    // How many bytes of table this handle reaches.  A caller sizing a
+    // firmware image asks this rather than guessing from the docs.
+    table_bytes: Int
+    // False when the handle came from `data_compact()` — the tier that
+    // answers for the Basic Multilingual Plane and nothing above it.
+    // Every function that takes a `UniData` documents what it does
+    // with a codepoint the compact tier cannot answer for.
+    complete: Bool
+
+// data_full is the generated tables, compiled into the program.
+//
+// The ordinary answer.  Naming this function is what causes the
+// tables to be linked, so a program that never normalises and never
+// case-maps does not carry them.
+//
+// ```novo
+// use udata
+//
+// fn main() [io]
+//     let d = udata.data_full()
+//     println(udata.data_version(d))
+// ```
+pub fn data_full() -> UniData []
+    todo("unicode-nv.udata.data_full")
+
+// data_compact is the same tables cut to the Basic Multilingual Plane.
+//
+// Roughly a third of the size, and the honest description of what it
+// gives up is: an astral codepoint — emoji, the historic scripts, the
+// mathematical alphanumerics — is left exactly as it was found rather
+// than normalised or case-mapped.  `complete` is false, so a caller
+// that must not silently do that can check.
+//
+// For the program that wants canonical composition of European text on
+// a device, and knows it.
+pub fn data_compact() -> UniData []
+    todo("unicode-nv.udata.data_compact")
+
+// data_from_pack reads the tables out of bytes the caller already
+// holds.
+//
+// The host reads the file; this parses it.  That is the whole of how a
+// `core` package gets a quarter of a megabyte of data without an
+// effect: the bytes arrive as an argument.
+//
+// `None` when the blob does not open with `PACK_MAGIC`, when its
+// declared length disagrees with what it was handed, or when its
+// format version is one this release does not know — three refusals
+// rather than an index into a stranger's bytes.
+//
+// The blob is BORROWED, not copied: every lookup reads out of the
+// slice the caller passed, so the caller must keep it alive for as
+// long as the `UniData`.
+pub fn data_from_pack(blob: [u8]) -> ?UniData []
+    todo("unicode-nv.udata.data_from_pack")
+
+// pack_bytes writes the compiled-in tables back out in the packed
+// form, appended to the caller's buffer.
+//
+// So that a build step can produce the blob that `data_from_pack`
+// takes without this package shipping a second program to generate
+// one, and so that a caller can check a pack it was given against the
+// tables it has.
+pub fn pack_bytes(out: [u8], d: UniData) -> [u8] []
+    todo("unicode-nv.udata.pack_bytes")
+
+// data_version is the Unicode version the handle's tables came from.
+pub fn data_version(d: UniData) -> Str []
+    todo("unicode-nv.udata.data_version")
+
+// data_covers answers whether the handle can speak for a codepoint.
+//
+// Always true for `data_full()`.  False above U+FFFF for
+// `data_compact()`, and false for whatever a pack left out.  Every
+// function taking a `UniData` treats a codepoint it does not cover as
+// having no mapping and no decomposition — the identity answer — so
+// this is the question to ask BEFORE trusting a result rather than a
+// way to interpret one afterwards.
+pub fn data_covers(d: UniData, ch: Int) -> Bool []
+    todo("unicode-nv.udata.data_covers")

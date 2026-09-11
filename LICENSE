@@ -1,0 +1,280 @@
+novo-lang Toolchain License Agreement
+================================
+
+Version 1.0
+Copyright (c) 2026 Klaus Hagen.  All rights reserved.
+
+This Agreement governs your use of the novo-lang toolchain binaries and the
+files distributed alongside them (together, the "Software").  By
+installing, copying, or using the Software you accept this Agreement.  If
+you do not accept it, do not use the Software.
+
+The Software is proprietary.  It is licensed, not sold.  Except for the
+rights granted below, all rights are reserved by the copyright holder.
+
+Two things this Agreement does NOT restrict, stated up front because they
+are what most readers came here for:
+
+  * It costs nothing, for any use, including commercial use.  See §1.
+  * It claims nothing in the programs you compile with it.  See §4.
+
+
+1. Grant of Use
+---------------
+
+Subject to this Agreement, you are granted a non-exclusive, worldwide,
+royalty-free license to install and use the Software, free of charge, for
+any purpose, including commercial purposes, on any number of machines,
+by any number of people within your organization.
+
+No fee, registration, license key, usage report, or attribution is
+required to use the Software.
+
+
+2. Redistribution of the Unmodified Artifact
+--------------------------------------------
+
+You may copy and redistribute the Software, free of charge, provided that
+you redistribute it **unmodified** — byte-for-byte as published, as a
+complete release artifact, with this Agreement, LICENSE-APACHE, and
+THIRD-PARTY-NOTICES.md included and unaltered.
+
+This permission exists so that mirrors, package caches, continuous-
+integration caches, container images, internal artifact repositories, and
+offline installers can hold a copy without asking.  You may charge for
+the medium, bandwidth, or service that delivers it; you may not charge
+for the license itself.
+
+You may not redistribute a modified artifact, a partial artifact, or a
+repackaging that presents the Software as your own.
+
+
+3. Restrictions
+---------------
+
+Except to the extent this Agreement permits it, or a license in
+THIRD-PARTY-NOTICES.md permits it (see §8), or applicable law grants you
+a right that cannot be waived by contract, you may not:
+
+  (a) modify, adapt, translate, or create derivative works of the
+      Software's binaries;
+
+  (b) reverse engineer, decompile, or disassemble the Software's
+      binaries, or otherwise attempt to derive their source code;
+
+  (c) remove, obscure, or alter any copyright, license, or attribution
+      notice in or accompanying the Software;
+
+  (d) sublicense, rent, lease, or sell the Software, or offer it as a
+      hosted service in which the Software itself is the product being
+      sold;
+
+  (e) use the Software's name or the copyright holder's name to endorse
+      or promote your products (see §7).
+
+These restrictions apply to the Software's binaries.  They do not apply
+to the source files the Software ships alongside those binaries — the C
+runtime sources under `bin/` and the components identified in §4 — which
+carry their own licenses and are meant to be read, modified, and compiled.
+
+
+4. Compiler Output — What You Build Is Yours
+--------------------------------------------
+
+**This section prevails over every other section of this Agreement.**
+
+A compiler is a tool.  The project claims no interest in what you make
+with it.  Specifically:
+
+  (a) **You own your output.**  Programs, libraries, object files,
+      executables, WebAssembly modules, firmware images, and any other
+      artifact produced by compiling, assembling, linking, or running
+      your source code with the Software are yours.  This Agreement
+      grants the copyright holder no interest in them of any kind.
+
+  (b) **No license is required to distribute them.**  You may use, sell,
+      distribute, sublicense, keep secret, or open-source your compiler
+      output on any terms you choose.  You need no permission from the
+      novo-lang project, owe it no royalty, and owe it no attribution.
+
+  (c) **This includes the parts of novo-lang that end up inside your
+      binaries.**  A compiled novo-lang program statically links the
+      novo-lang C runtime and contains code generated from the
+      novo-lang standard library.  Those components are licensed to
+      the public under the Apache License, Version 2.0 (see
+      LICENSE-APACHE), and their
+      presence in your binary creates no obligation to the novo-lang project.
+
+  (d) **How the Apache-2.0 obligation is discharged.**  Apache-2.0 §4
+      would ordinarily require a redistributor of those components to
+      pass along a copy of the license and any NOTICE file.  Two things
+      dispose of that here:
+
+        1. The copyright holder is the sole licensor of the novo-lang runtime
+           and standard library.  There is no third-party NOTICE content
+           in them to propagate: the attribution notice for those
+           components is the one the Software itself ships, in
+           LICENSE-APACHE and THIRD-PARTY-NOTICES.md, in the toolchain
+           artifact you already have.  No NOTICE file travels with
+           compiled output because there is nothing in it that the
+           artifact does not already carry.
+
+        2. To remove any doubt, the copyright holder grants an
+           additional permission, as permitted by Apache-2.0 §4: **you
+           may distribute compiler output containing the novo-lang runtime
+           and standard library without satisfying any condition of
+           Apache-2.0 §4** — no license copy, no NOTICE file, no
+           attribution, no marking of modified files.  This permission
+           is irrevocable and runs with the output.
+
+      If you would rather rely on Apache-2.0 directly for those
+      components, you may; this permission is offered in addition to it,
+      not in place of it, and it takes nothing away.
+
+  (e) **Your source is your source.**  Writing novo-lang source code, or
+      compiling it, does not place it under this Agreement or any other
+      license of the project's choosing.
+
+
+5. No Warranty
+--------------
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, TITLE, AND
+NONINFRINGEMENT.  THE COPYRIGHT HOLDER DOES NOT WARRANT THAT THE SOFTWARE
+IS FREE OF DEFECTS, THAT IT WILL OPERATE WITHOUT INTERRUPTION, OR THAT
+THE CODE IT GENERATES IS CORRECT, SAFE, OR FIT FOR ANY PURPOSE.
+
+The Software is pre-1.0 software under active development.  Its
+interfaces, diagnostics, and generated code change between releases.  Do
+not deploy it in a safety-critical, life-critical, or otherwise
+high-risk setting.
+
+
+6. Limitation of Liability
+--------------------------
+
+TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, IN NO EVENT SHALL THE
+COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY,
+WHETHER IN AN ACTION OF CONTRACT, TORT, OR OTHERWISE, ARISING FROM, OUT
+OF, OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE, INCLUDING WITHOUT LIMITATION ANY DIRECT, INDIRECT,
+INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES, LOSS OF
+PROFITS, LOSS OF DATA, OR BUSINESS INTERRUPTION, EVEN IF ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGE.
+
+The Software is provided free of charge, and this allocation of risk is a
+condition of that.
+
+Some jurisdictions do not allow the exclusion of certain warranties or
+the limitation of certain liabilities.  To the extent such an exclusion
+or limitation is unenforceable where you are, it applies to the maximum
+extent permitted there, and the rest of this Agreement remains in force.
+
+
+7. Trademarks
+-------------
+
+**No trademark rights are granted by this Agreement.**
+
+The project's name and mark is "novo-lang".  The word "Novo", where it
+appears in this Agreement, in documentation, or in tool output, is an
+informal short form of "novo-lang" used descriptively; no rights are
+claimed or granted in the word "Novo" standing alone.  The "novo-lang"
+name, any project logo, and any other mark used by the project are not
+licensed here.  This Agreement grants you rights in the Software's
+copyright only.
+
+You may state truthfully that your product is written in novo-lang, is
+compatible with novo-lang, or was built with the novo-lang toolchain.
+You may not use the project's names or marks as the name of your own
+product, as part of your product's name, in a way that suggests the
+project endorses, sponsors, or is affiliated with you, or in a way that
+is likely to cause confusion about the origin of software.
+
+A distribution of a modified toolchain — which §2 and §3 do not permit in
+any case — could not be distributed under the "novo-lang" name.
+
+
+8. Third-Party Components
+-------------------------
+
+The Software incorporates third-party components.  They are identified,
+with their licenses, in THIRD-PARTY-NOTICES.md, which is part of this
+distribution.
+
+**Where a third-party component's license grants you a right this
+Agreement would restrict, that license governs that component and this
+Agreement does not narrow it.**  Several of the components listed are
+copyleft-licensed, and some of their terms — including rights to reverse
+engineer for debugging, to obtain source, and to relink — are rights
+§3 must not and does not take away.
+
+Nothing in this Agreement is intended to conflict with those licenses.
+To the extent of any conflict, the third-party license prevails for the
+component it covers.
+
+
+9. Future Source Release — a Statement of Intent, Not a Promise
+---------------------------------------------------------------
+
+The copyright holder intends to publish the full source of the novo-lang
+toolchain under the Apache License, Version 2.0, once the compiler is
+self-hosting.
+
+**This is a statement of present intent and is NOT a contractual
+commitment.**  It creates no obligation, grants no right, and is not
+relied upon by this Agreement.  It may change, be delayed, or be
+abandoned for any reason or none.  Do not make a decision that depends on
+it.
+
+The parts of novo-lang that are already open are already open, today, and are
+not waiting on this: the novo-lang C runtime and standard library are licensed
+to the public under Apache-2.0 (§4(c), LICENSE-APACHE), and the editor
+extension, tree-sitter grammar, playground, and Linguist samples are
+licensed under the MIT License in their own directories.
+
+
+10. Term and Termination
+------------------------
+
+This Agreement is effective until terminated.
+
+It terminates automatically, without notice, if you breach any of its
+terms.  On termination you must stop using the Software and destroy all
+copies of it in your possession.
+
+**Termination does not affect §4.**  Compiler output you produced while
+this Agreement was in force remains yours, and the permissions in §4
+survive termination permanently.  Losing the right to run the compiler is
+not the same as losing the right to ship what you already built with it,
+and this Agreement does not conflate them.
+
+Sections 4, 5, 6, 7, and this sentence survive termination.
+
+
+11. General
+-----------
+
+If any provision of this Agreement is held unenforceable, that provision
+is modified to the minimum extent necessary to make it enforceable, or
+severed if it cannot be, and the remaining provisions stay in effect.
+
+Failure to enforce a provision is not a waiver of it.
+
+This Agreement is the entire agreement between you and the copyright
+holder regarding the Software, and supersedes any prior understanding
+about it.
+
+The copyright holder may license the Software to others on different
+terms, and may release future versions under different terms.  A version
+you received under this Agreement stays under this Agreement.
+
+
+---
+
+Questions about licensing, including requests for terms this Agreement
+does not grant, go to the copyright holder.
+
+Klaus Hagen

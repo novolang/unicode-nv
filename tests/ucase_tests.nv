@@ -1,0 +1,163 @@
+// ucase_tests.nv — the API suite for case mapping and folding.
+//
+// RED ON PURPOSE: every body under `src/` is a `todo()`.
+//
+// THE CASES ARE THE UCD's OWN — `SpecialCasing.txt` and
+// `CaseFolding.txt` — and every one of them is a case ASCII case
+// mapping gets wrong.  A suite of "A" uppercases to "A" would prove
+// nothing this module is for.
+
+use std.test
+use std.list
+use udata
+use ucase
+
+@test
+fn test_a_mapping_is_not_one_to_one() [io]
+    // SpecialCasing.txt: 00DF ; 00DF ; 0053 0073 ; 0053 0053 ; # ß
+    // The sharp s uppercases to two letters.  A function that answers
+    // with one codepoint cannot say this, which is why the full forms
+    // answer with a list and the one-codepoint forms carry `simple` in
+    // their names.
+    let d = udata.data_full()
+
+    test.case("the string form grows")
+    test.assert(ucase.to_upper(d, "stra\u{00DF}e", LANG_ROOT) == "STRASSE")
+
+    test.case("the full codepoint form returns two")
+    test.assert(list.len(ucase.full_upper(d, 0x00DF, LANG_ROOT)) == 2)
+
+    test.case("and the simple form cannot, so it returns the letter unchanged")
+    test.assert(ucase.simple_upper(d, 0x00DF) == 0x00DF)
+
+@test
+fn test_a_mapping_depends_on_the_language() [io]
+    // SpecialCasing.txt's conditional section: under `tr` and `az`,
+    // 0069 uppercases to 0130 and 0049 lowercases to 0131.  A Turkish
+    // system that uppercased "i" to "I" produces a different word.
+    let d = udata.data_full()
+
+    test.case("the root locale gives the Latin answer")
+    test.assert(ucase.to_upper(d, "i", LANG_ROOT) == "I")
+
+    test.case("Turkish gives the dotted capital")
+    test.assert(ucase.to_upper(d, "i", LANG_TURKISH) == "\u{0130}")
+
+    test.case("and lowercases the dotless one back")
+    test.assert(ucase.to_lower(d, "I", LANG_TURKISH) == "\u{0131}")
+
+    test.case("Azeri follows Turkish")
+    test.assert(ucase.to_upper(d, "i", LANG_AZERI) == "\u{0130}")
+
+@test
+fn test_the_final_sigma_rule_needs_the_whole_word() [io]
+    // SpecialCasing.txt: 03A3 lowercases to 03C2 at the end of a word
+    // and 03C3 elsewhere.  A per-codepoint mapping cannot see which,
+    // which is the second reason the string functions exist.
+    let d = udata.data_full()
+
+    test.case("a sigma at the end of a word takes the final form")
+    test.assert(ucase.to_lower(d, "\u{039F}\u{0394}\u{039F}\u{03A3}", LANG_ROOT)
+                == "\u{03BF}\u{03B4}\u{03BF}\u{03C2}")
+
+    test.case("and one in the middle does not")
+    test.assert(ucase.to_lower(d, "\u{03A3}\u{039F}", LANG_ROOT) == "\u{03C3}\u{03BF}")
+
+@test
+fn test_folding_is_not_lowercasing() [io]
+    // CaseFolding.txt: 00DF ; F ; 0073 0073 — the full fold of ß is
+    // "ss", and its LOWERCASE is still "ß".  A program that used
+    // to_lower for a caseless comparison has a bug on German input,
+    // and this is that bug written down.
+    let d = udata.data_full()
+
+    test.case("lowercasing leaves the sharp s alone")
+    test.assert(ucase.to_lower(d, "\u{00DF}", LANG_ROOT) == "\u{00DF}")
+
+    test.case("folding does not")
+    test.assert(ucase.fold(d, "\u{00DF}") == "ss")
+
+    test.case("so a caseless match finds both spellings")
+    test.assert(ucase.eq_fold(d, "Stra\u{00DF}e", "STRASSE"))
+
+    test.case("and folding is stable — folding a fold changes nothing")
+    test.assert(ucase.fold(d, ucase.fold(d, "Stra\u{00DF}e")) == ucase.fold(d, "Stra\u{00DF}e"))
+
+@test
+fn test_titlecase_is_a_third_form_not_uppercase() [io]
+    // 01C4 ǄZ / 01C5 ǅ / 01C6 ǆ — the digraph has three forms, and
+    // the middle one exists for exactly this.
+    let d = udata.data_full()
+
+    test.case("the digraph titlecases to its own form")
+    test.assert(ucase.simple_title(d, 0x01C6) == 0x01C5)
+
+    test.case("and uppercases to a different one")
+    test.assert(ucase.simple_upper(d, 0x01C6) == 0x01C4)
+
+@test
+fn test_titlecasing_uses_word_boundaries_not_spaces() [io]
+    // "o'clock" has one word in it by UAX #29, so the "c" does not
+    // start a new one.  A naive split-on-space or split-on-
+    // non-letter produces "O'Clock", which is not a word.
+    let d = udata.data_full()
+
+    test.case("an apostrophe does not start a word")
+    test.assert(ucase.to_title(d, "o'clock", LANG_ROOT) == "O'clock")
+
+    test.case("but a space does")
+    test.assert(ucase.to_title(d, "two words", LANG_ROOT) == "Two Words")
+
+@test
+fn test_the_case_predicates_answer_before_the_work() [io]
+    let d = udata.data_full()
+
+    test.case("most of Unicode has no case at all")
+    test.assert(ucase.is_cased(d, 0x0041))
+    test.assert(ucase.is_cased(d, 0x4E16) == false)
+    test.assert(ucase.is_cased(d, 0x0030) == false)
+
+    test.case("and folding changes nothing that is already folded")
+    test.assert(ucase.changes_when_folded(d, 0x0041))
+    test.assert(ucase.changes_when_folded(d, 0x0061) == false)
+    test.assert(ucase.changes_when_folded(d, 0x4E16) == false)
+
+@test
+fn test_the_into_forms_append_rather_than_allocate() [io]
+    // The shape numfmt-nv and ansi-nv use for the same reason: a
+    // program mapping a stream of strings reuses one buffer instead
+    // of producing one string per input.
+    let d = udata.data_full()
+
+    test.case("the buffer comes back with the text appended")
+    let out = ucase.to_upper_into([], d, "ab", LANG_ROOT)
+    test.assert(list.len(out) == 2)
+
+    test.case("and an existing prefix is kept, by every one of the three")
+    let out2 = ucase.fold_into(out, d, "C")
+    test.assert(list.len(out2) == 3)
+    let out3 = ucase.to_lower_into(out2, d, "D", LANG_ROOT)
+    test.assert(list.len(out3) == 4)
+
+@test
+fn test_the_simple_forms_are_the_building_blocks_for_a_caller_s_own_rule() [io]
+    // Published because a program that needs the Turkic case FOLD —
+    // which `fold` deliberately does not offer — has to assemble it
+    // per codepoint, and because a caller walking text one character
+    // at a time should not have to go through the string functions.
+    let d = udata.data_full()
+
+    test.case("the three one-to-one mappings agree with the string forms on ASCII")
+    test.assert(ucase.simple_lower(d, 0x41) == 0x61)
+    test.assert(ucase.simple_upper(d, 0x61) == 0x41)
+    test.assert(ucase.simple_fold(d, 0x41) == 0x61)
+
+    test.case("and answer with the codepoint itself when there is no mapping")
+    test.assert(ucase.simple_lower(d, 0x4E16) == 0x4E16)
+    test.assert(ucase.simple_fold(d, 0x30) == 0x30)
+
+    test.case("the full lowercase of a Turkish capital I is two codepoints")
+    test.assert(list.len(ucase.full_lower(d, 0x0130, LANG_ROOT)) == 2)
+
+    test.case("and an ordinary letter's full form is a one-element list")
+    test.assert(list.len(ucase.full_lower(d, 0x41, LANG_ROOT)) == 1)

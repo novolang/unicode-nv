@@ -1,0 +1,173 @@
+// uwidth.nv — how many terminal cells a codepoint occupies.
+//
+// Every body here is a `todo()`; the signatures are the design.
+//
+// THIS IS THE FUNCTION THE PACKAGE EXISTS FOR.  textwrap-nv is
+// published, and it takes the width of a codepoint as a parameter
+// because unicode-nv did not exist when it was written:
+//
+//     pub struct WrapWidth
+//         of_char: fn(Int) -> Int
+//
+// `uwidth.char_width` is that `fn(Int) -> Int`.  Not a function that
+// returns one, not one that takes a table as well — the exact shape
+// the published consumer already accepts, so that landing this
+// package is one line at a consumer's call site and no change to any
+// signature textwrap-nv published:
+//
+//     let w = WrapWidth { of_char: uwidth.char_width }
+//
+// That constraint is why the width tables are compiled in and take no
+// `UniData` argument.  `udata.nv` argues the tiering; this module is
+// the tier that is always there.
+//
+// THE ANSWER IS 0, 1 OR 2, and never anything else.  A terminal cell
+// grid has no other widths.  A combining mark and a zero-width joiner
+// take none; an East Asian Wide or Fullwidth form takes two; the rest
+// take one.  A codepoint that is not a character at all — an unpaired
+// surrogate, a value above U+10FFFF — takes 1, because it will be
+// drawn as a replacement glyph and a replacement glyph occupies a
+// cell.
+//
+// WHAT THIS IS NOT.  It is not how wide the glyph is in a
+// proportional font, it is not how many cells your particular
+// terminal will actually use, and it is not a promise that two
+// terminals agree.  It is UAX #11 plus the two categories every
+// implementation adds to it, which is what `wcwidth` answers and what
+// every terminal is written against.
+
+// UniEastAsian is the East Asian Width property of UAX #11.
+//
+// Public because the ambiguous case cannot be resolved by this
+// package: a terminal configured for a CJK locale draws the Greek and
+// Cyrillic letters two cells wide and every other terminal draws them
+// one, and only the program knows which terminal it is talking to.
+// `char_width` answers 1 for those and `char_width_cjk` answers 2;
+// this enum is how a caller that needs a third policy writes it.
+pub enum UniEastAsian
+    // W — the CJK ideographs, the Hangul syllables, the kana.  Two
+    // cells everywhere.
+    EaWide
+    // F — the fullwidth forms, U+FF01 onwards.  Two cells everywhere.
+    EaFullwidth
+    // H — the halfwidth forms, including halfwidth katakana.  One
+    // cell.
+    EaHalfwidth
+    // Na — narrow, the ASCII range and its relatives.  One cell.
+    EaNarrow
+    // A — ambiguous.  Two cells in a CJK context, one otherwise, and
+    // the reason this enum is public.
+    EaAmbiguous
+    // N — neutral: everything with no East Asian tradition at all.
+    // One cell.
+    EaNeutral
+
+// char_width is the width of one codepoint, in terminal cells.
+//
+// **This is the `fn(Int) -> Int` textwrap-nv's `WrapWidth` holds.**
+// One argument, no table, no configuration: 0 for a combining mark, a
+// zero-width space or a format character, 2 for a Wide or Fullwidth
+// form, 1 for everything else including Ambiguous.
+//
+// ```novo
+// use uwidth
+//
+// fn main() [io]
+//     println(str.from_int(uwidth.char_width(0x41)))      // 1 — A
+//     println(str.from_int(uwidth.char_width(0x4E16)))    // 2 — an ideograph
+//     println(str.from_int(uwidth.char_width(0x0301)))    // 0 — a combining acute
+// ```
+pub fn char_width(ch: Int) -> Int []
+    todo("unicode-nv.uwidth.char_width")
+
+// char_width_cjk is `char_width` with the Ambiguous class counted as
+// two cells.
+//
+// The second `fn(Int) -> Int`, for a terminal the user has configured
+// East Asian.  It exists as its own function rather than as a flag
+// because a flag would not fit in a `WrapWidth`, and because a
+// program that needs this knows it at start-up and never changes its
+// mind mid-line.
+pub fn char_width_cjk(ch: Int) -> Int []
+    todo("unicode-nv.uwidth.char_width_cjk")
+
+// str_width is the width of a whole string, summed over its
+// codepoints.
+//
+// This is NOT the same as summing `char_width` over the grapheme
+// clusters, and the difference is the emoji: a flag is two regional
+// indicators, a family is up to seven codepoints joined by ZWJ, and
+// summed per codepoint either comes out four cells or one.
+// `cluster_width` is the function that gets those right; this one is
+// what a caller wants for text that has no such sequences in it, and
+// it is faster because it never has to segment.
+pub fn str_width(text: Str) -> Int []
+    todo("unicode-nv.uwidth.str_width")
+
+// cluster_width is the width of one grapheme cluster.
+//
+// The cluster is what a terminal actually places, so this is the
+// honest answer for text with emoji in it: an emoji sequence is two
+// cells however many codepoints it holds, a base letter with three
+// combining marks is one, and a regional-indicator pair is two.
+//
+// A caller with a string rather than a single cluster walks
+// `ugrapheme.cursor` and calls this per cluster; `text_width` below
+// does exactly that, and is the function most callers want.
+pub fn cluster_width(cluster: Str) -> Int []
+    todo("unicode-nv.uwidth.cluster_width")
+
+// text_width is the width of a string, measured cluster by cluster.
+//
+// The correct-and-slower sibling of `str_width`: it segments the text
+// with `ugrapheme` and sums `cluster_width`, so every emoji sequence
+// counts once.  Use it when the text can contain anything; use
+// `str_width` when it cannot and the loop is hot.
+pub fn text_width(text: Str) -> Int []
+    todo("unicode-nv.uwidth.text_width")
+
+// fit_prefix is how many BYTES of `text` fit in `columns` cells.
+//
+// A byte count, because that is what a caller slicing the string
+// needs, and the same shape textwrap-nv's own `fit_prefix` has so the
+// two can be read side by side.
+//
+// A cluster that would straddle the edge is left out entirely: a
+// two-cell ideograph with one column left does not half-fit, and a
+// truncation that let it would produce a line one column too long,
+// which is the bug that makes a status bar wrap and scroll the whole
+// screen.
+pub fn fit_prefix(text: Str, columns: Int) -> Int []
+    todo("unicode-nv.uwidth.fit_prefix")
+
+// east_asian_width is the UAX #11 property itself.
+//
+// For a caller writing its own policy for the ambiguous class, or
+// reporting why a string measured the way it did.
+pub fn east_asian_width(ch: Int) -> UniEastAsian []
+    todo("unicode-nv.uwidth.east_asian_width")
+
+// is_wide answers whether the codepoint is Wide or Fullwidth.
+pub fn is_wide(ch: Int) -> Bool []
+    todo("unicode-nv.uwidth.is_wide")
+
+// is_zero_width answers whether the codepoint occupies no cell.
+//
+// True for the combining marks (Mn, Me), the format characters (Cf,
+// which is where the zero-width joiner and the bidi controls live),
+// the Hangul junseong and jongseong fillers, and U+200B.  False for
+// the C0 controls: a control character has no width on a screen, but
+// it is not text either, and a caller measuring text that might
+// contain one wants to know rather than to have it silently measure
+// as nothing.
+pub fn is_zero_width(ch: Int) -> Bool []
+    todo("unicode-nv.uwidth.is_zero_width")
+
+// is_ambiguous answers whether the codepoint's width depends on the
+// terminal's locale.
+//
+// The question a program asks once, at start-up, to decide between
+// `char_width` and `char_width_cjk` — or to warn that its output will
+// be misaligned on somebody else's terminal.
+pub fn is_ambiguous(ch: Int) -> Bool []
+    todo("unicode-nv.uwidth.is_ambiguous")

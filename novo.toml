@@ -1,0 +1,41 @@
+[package]
+name        = "unicode-nv"
+version     = "0.0.1"
+description = "The Unicode character database as a library: grapheme cluster segmentation by UAX #29 with an incremental state machine for a terminal that receives one codepoint at a time, display width by UAX #11 as the exact `fn(Int) -> Int` textwrap-nv already takes, the four normalisation forms, full case mapping and folding with the language-specific rules, and the category and identifier predicates a tokenizer wants.  The tables are tiered: width and breaks are always compiled in, normalisation and case mapping arrive as a value the caller names.  Interface only — every body is a todo()."
+license     = "Apache-2.0"
+
+# An INTERFACE release: every `pub fn` body is a `todo()`, so the
+# signatures and the effect rows are published and nothing is
+# implemented.  `novo pkg publish` recognises the shape and requires
+# both the draft stability and the 0.0.x version; the first
+# implementation is the 0.1.0 published over it.
+stability   = "draft"
+
+# `core`.  Every answer here is a table lookup over a codepoint the
+# caller already holds: nothing is read, nothing is written, and the
+# largest tables arrive either as constants in the binary or as bytes
+# the host handed over.  That last one is the whole reason
+# `udata.data_from_pack` takes a `[u8]` rather than a path — a core
+# package cannot open a file, and the tables are 245 KB.
+layer       = "core"
+
+category    = "text"
+
+tags        = ["unicode", "grapheme", "segmentation", "uax29", "width", "east-asian-width", "normalization", "nfc", "nfd", "case-folding", "uax31", "sans-io"]
+repository  = "https://github.com/novolang/unicode-nv"
+maintainers = ["novo-lang"]
+novo        = ">= 0.8.9"
+
+# A library: no `main`, so `novo pkg build` type-checks and
+# effect-checks every module under `src/` and writes no binary.
+
+[docs.pages]
+"README.md" = "The Unicode character database as a library"
+
+[dependencies]
+# NONE, AND THE ABSENCE IS THE POINT.  This package is the bottom of
+# the text tier: textwrap-nv takes its width function, markdown-nv
+# takes its whitespace and punctuation classes for the CommonMark
+# emphasis rules, tui-nv and novoterm take its widths through
+# textwrap-nv, and slug-nv and i18n-nv will take its normalisation.
+# A dependency here would be a dependency all of them inherit.

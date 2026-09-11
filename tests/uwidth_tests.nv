@@ -1,0 +1,146 @@
+// uwidth_tests.nv — the API suite for display width.
+//
+// RED ON PURPOSE: every body under `src/` is a `todo()`, so every
+// assertion here reaches `not implemented: unicode-nv.uwidth.<fn>`.
+// Run with `--isolate` for one verdict per `@test`.
+//
+// THE CASES ARE UAX #11's OWN, plus the two categories every terminal
+// adds to it.  Where a case is not from the annex — the emoji
+// sequences, the replacement behaviour — the comment says whose rule
+// it is, because "every terminal does this" is a claim that has to be
+// attributable to something.
+//
+// THE FIRST TEST IS THE CONTRACT WITH textwrap-nv and is the one that
+// must never be allowed to go red for a reason other than `todo()`.
+
+use std.test
+use uwidth
+
+@test
+fn test_char_width_is_the_function_textwrap_nv_holds() [io]
+    // textwrap-nv publishes `struct WrapWidth { of_char: fn(Int) -> Int }`
+    // and takes the rule as a parameter because this package did not
+    // exist.  `char_width` is that rule: one Int in, one Int out, no
+    // table argument, no configuration.  If this signature ever grows
+    // an argument, every published consumer breaks.
+    let rule = uwidth.char_width
+
+    test.case("the rule is a value, and calling it answers cells")
+    test.assert(rule(0x41) == 1)
+
+    test.case("and the answer is only ever 0, 1 or 2")
+    test.assert(uwidth.char_width(0x0301) == 0)
+    test.assert(uwidth.char_width(0x4E16) == 2)
+
+@test
+fn test_uax11_wide_and_fullwidth_take_two_cells() [io]
+    test.case("W — a CJK ideograph")
+    test.assert(uwidth.char_width(0x4E16) == 2)
+    test.assert(uwidth.is_wide(0x4E16))
+
+    test.case("W — a Hangul syllable and a hiragana")
+    test.assert(uwidth.char_width(0xAC00) == 2)
+    test.assert(uwidth.char_width(0x3042) == 2)
+
+    test.case("F — the fullwidth Latin forms")
+    test.assert(uwidth.char_width(0xFF21) == 2)
+    test.assert(uwidth.east_asian_width(0xFF21) == EaFullwidth)
+
+    test.case("H — the halfwidth katakana are one cell, which is the point of them")
+    test.assert(uwidth.char_width(0xFF66) == 1)
+    test.assert(uwidth.east_asian_width(0xFF66) == EaHalfwidth)
+
+@test
+fn test_the_ambiguous_class_is_the_terminal_s_decision() [io]
+    // U+00A1 INVERTED EXCLAMATION MARK is East_Asian_Width=A.  A
+    // terminal in a CJK locale draws it in two cells; every other
+    // terminal draws it in one.  No package can know which.
+    test.case("ambiguous is one cell by default")
+    test.assert(uwidth.char_width(0x00A1) == 1)
+    test.assert(uwidth.is_ambiguous(0x00A1))
+    test.assert(uwidth.east_asian_width(0x00A1) == EaAmbiguous)
+
+    test.case("and two under the CJK rule, which is a different function")
+    test.assert(uwidth.char_width_cjk(0x00A1) == 2)
+
+    test.case("the CJK rule changes nothing that was not ambiguous")
+    test.assert(uwidth.char_width_cjk(0x41) == 1)
+    test.assert(uwidth.char_width_cjk(0x4E16) == 2)
+
+@test
+fn test_zero_width_is_the_half_uax11_does_not_cover() [io]
+    // East_Asian_Width says nothing about combining marks: they are
+    // Neutral, which would make them one cell.  Every implementation
+    // adds the general categories Mn, Me and Cf on top, and a package
+    // that did not would measure every accented word too long.
+    test.case("a combining mark takes no cell")
+    test.assert(uwidth.char_width(0x0301) == 0)
+    test.assert(uwidth.is_zero_width(0x0301))
+
+    test.case("nor does a zero-width space or a zero-width joiner")
+    test.assert(uwidth.char_width(0x200B) == 0)
+    test.assert(uwidth.char_width(0x200D) == 0)
+
+    test.case("nor a bidi control, which is Cf")
+    test.assert(uwidth.char_width(0x202E) == 0)
+
+    test.case("but a C0 control is NOT zero-width here — it is not text")
+    test.assert(uwidth.is_zero_width(0x07) == false)
+
+@test
+fn test_a_codepoint_that_is_not_a_character_still_takes_a_cell() [io]
+    // Because it will be drawn as a replacement glyph, and a
+    // replacement glyph occupies one.  Measuring it as zero is how a
+    // line of corrupt bytes silently overruns the screen.
+    test.case("an unpaired surrogate")
+    test.assert(uwidth.char_width(0xD800) == 1)
+
+    test.case("and a value outside Unicode altogether")
+    test.assert(uwidth.char_width(0x110000) == 1)
+
+@test
+fn test_str_width_sums_codepoints_and_says_so() [io]
+    test.case("ASCII is its own length")
+    test.assert(uwidth.str_width("hello") == 5)
+
+    test.case("an ideograph is two, so three of them are six")
+    test.assert(uwidth.str_width("世界語") == 6)
+
+    test.case("and a combining mark adds nothing")
+    test.assert(uwidth.str_width("cafe\u{0301}") == 4)
+
+@test
+fn test_cluster_width_is_what_a_terminal_actually_places() [io]
+    // The difference between `str_width` and `text_width`, and the
+    // reason both exist.  A flag is two regional indicators: summed
+    // per codepoint it is four cells, and a terminal draws it in two.
+    test.case("a regional-indicator pair is one cluster, two cells")
+    test.assert(uwidth.cluster_width("\u{1F1E6}\u{1F1E7}") == 2)
+
+    test.case("a ZWJ emoji sequence is one cluster, two cells")
+    test.assert(uwidth.cluster_width("\u{1F468}\u{200D}\u{1F469}") == 2)
+
+    test.case("a base with three marks is one cluster, one cell")
+    test.assert(uwidth.cluster_width("a\u{0301}\u{0308}\u{0327}") == 1)
+
+    test.case("text_width segments; str_width does not, and they disagree here")
+    test.assert(uwidth.text_width("\u{1F1E6}\u{1F1E7}") == 2)
+
+@test
+fn test_fit_prefix_never_returns_a_partial_cell() [io]
+    test.case("ASCII fits a byte per column")
+    test.assert(uwidth.fit_prefix("hello world", 5) == 5)
+
+    test.case("a two-cell character with one column left does not half-fit")
+    // "a" then an ideograph: one column is spent, one remains, and the
+    // ideograph needs two.  The answer is the byte length of "a".
+    test.assert(uwidth.fit_prefix("a世", 2) == 1)
+
+    test.case("with two columns left it does")
+    test.assert(uwidth.fit_prefix("a世", 3) == 4)
+
+    test.case("nothing fits in no columns")
+    test.assert(uwidth.fit_prefix("hello", 0) == 0)
+
+    test.case("and asking for more columns than there is text returns the text")
+    test.assert(uwidth.fit_prefix("hi", 80) == 2)

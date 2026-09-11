@@ -1,0 +1,257 @@
+// uclass.nv — what kind of thing a codepoint is.
+//
+// Every body here is a `todo()`; the signatures are the design.
+//
+// THE TIER SPLIT IS VISIBLE IN THE SIGNATURES, and that is on
+// purpose.  The predicates a lexer's inner loop asks — is this
+// whitespace, is this a control, can this start an identifier — read
+// small range lists compiled in with the package and take no `UniData`
+// argument.  `category`, which answers with one of Unicode's thirty
+// general categories for any codepoint at all, needs the full 40 KB
+// table and takes one.  A reader deciding what a program will cost
+// can see which is which without leaving the signature.
+//
+// WHAT A TOKENIZER ACTUALLY WANTS is UAX #31, not the general
+// category: `is_id_start` and `is_id_continue` are the derived
+// properties a language's identifier rules are written against, and
+// a lexer built on "is a letter or an underscore" is a lexer that
+// disagrees with every other language about the same source file.
+// `is_xid_start` and `is_xid_continue` are the normalisation-closed
+// forms — the ones to use when identifiers are compared after NFKC,
+// which is what a language with Unicode identifiers should do.
+//
+// ASCII HAS ITS OWN FUNCTIONS, and they exist because a lexer for a
+// language whose identifiers are ASCII should not pay a range-list
+// binary search per character.  They are not "the fast path" for the
+// Unicode ones — they answer a different, narrower question, and a
+// caller that uses them on non-ASCII text is not making an
+// approximation, it is getting `false`.
+use udata
+
+// UniCategory is Unicode's general category.
+//
+// All thirty, not a useful subset: a partial category enum forces
+// every value it left out into an "other" arm, and the caller then
+// cannot tell a private-use codepoint from an unassigned one — which
+// is the distinction a validator most often needs.
+pub enum UniCategory
+    // Lu — an uppercase letter.
+    CatUppercaseLetter
+    // Ll — a lowercase letter.
+    CatLowercaseLetter
+    // Lt — a titlecase letter: the digraphs that have a third form.
+    CatTitlecaseLetter
+    // Lm — a modifier letter.
+    CatModifierLetter
+    // Lo — a letter with no case: most of the world's scripts.
+    CatOtherLetter
+    // Mn — a non-spacing combining mark.  Width 0.
+    CatNonspacingMark
+    // Mc — a spacing combining mark: the Indic vowel signs that take
+    // a cell of their own.
+    CatSpacingMark
+    // Me — an enclosing mark.
+    CatEnclosingMark
+    // Nd — a decimal digit.
+    CatDecimalNumber
+    // Nl — a letter-like number: the Roman numerals.
+    CatLetterNumber
+    // No — any other number: the fractions, the superscripts.
+    CatOtherNumber
+    // Pc — a connector punctuation: the underscore and its relatives.
+    CatConnectorPunctuation
+    // Pd — a dash.
+    CatDashPunctuation
+    // Ps — an opening bracket.
+    CatOpenPunctuation
+    // Pe — a closing bracket.
+    CatClosePunctuation
+    // Pi — an initial quotation mark.
+    CatInitialPunctuation
+    // Pf — a final quotation mark.
+    CatFinalPunctuation
+    // Po — any other punctuation.
+    CatOtherPunctuation
+    // Sm — a mathematical symbol.
+    CatMathSymbol
+    // Sc — a currency symbol.
+    CatCurrencySymbol
+    // Sk — a modifier symbol.
+    CatModifierSymbol
+    // So — any other symbol, which is where most emoji live.
+    CatOtherSymbol
+    // Zs — a space separator.
+    CatSpaceSeparator
+    // Zl — the line separator, U+2028.
+    CatLineSeparator
+    // Zp — the paragraph separator, U+2029.
+    CatParagraphSeparator
+    // Cc — a C0 or C1 control.
+    CatControl
+    // Cf — a format character: the joiners, the bidi controls.
+    CatFormat
+    // Cs — a surrogate.  Never valid in text; reachable only from a
+    // caller's own integer.
+    CatSurrogate
+    // Co — private use.
+    CatPrivateUse
+    // Cn — unassigned, and the answer for any value above U+10FFFF.
+    CatUnassigned
+
+// category is the general category of a codepoint.
+//
+// Takes a `UniData` because the table is the big one.  A codepoint
+// the handle does not cover — an astral codepoint under
+// `data_compact()` — answers `CatUnassigned`, which is the same
+// answer an unassigned codepoint gets; `udata.data_covers` is how a
+// caller tells those apart, and it has to ask before rather than
+// after.
+pub fn category(d: udata.UniData, ch: Int) -> UniCategory []
+    todo("unicode-nv.uclass.category")
+
+// category_abbrev is the two-letter abbreviation — "Lu", "Nd", "Zs".
+//
+// For a diagnostic, a debugger's value renderer, or a program
+// matching a regular expression's `\p{Lu}` against a name it was
+// given as text.
+pub fn category_abbrev(c: UniCategory) -> Str []
+    todo("unicode-nv.uclass.category_abbrev")
+
+// category_named is the category an abbreviation names.
+//
+// `None` for a string that is not one of the thirty.  The pair with
+// `category_abbrev`, so a `\p{...}` in a pattern can be resolved once
+// at compile time rather than compared as text per character.
+pub fn category_named(abbrev: Str) -> ?UniCategory []
+    todo("unicode-nv.uclass.category_named")
+
+// is_letter answers whether the codepoint is any of Lu, Ll, Lt, Lm,
+// Lo.
+//
+// No `UniData`: the letter ranges are their own compiled-in list.
+pub fn is_letter(ch: Int) -> Bool []
+    todo("unicode-nv.uclass.is_letter")
+
+// is_digit answers whether the codepoint is a decimal digit — Nd.
+//
+// Every script's digits, not just `0`-`9`.  `is_ascii_digit` is the
+// narrower question, and the one a number parser should be asking:
+// accepting Devanagari digits in a program's integer literals is a
+// decision, not a default.
+pub fn is_digit(ch: Int) -> Bool []
+    todo("unicode-nv.uclass.is_digit")
+
+// is_alphanumeric answers letter-or-number: Lu, Ll, Lt, Lm, Lo, Nd,
+// Nl, No.
+pub fn is_alphanumeric(ch: Int) -> Bool []
+    todo("unicode-nv.uclass.is_alphanumeric")
+
+// is_whitespace answers the Unicode White_Space property.
+//
+// Which is NOT the Z categories: it includes the tab, the line feed,
+// the carriage return and the other C0 spaces, and it excludes
+// U+00A0's relatives that are marked non-breaking... except that it
+// does include U+00A0, because White_Space is a property Unicode
+// assigns rather than a category it derives.  Every implementation
+// that tries to derive it gets a different answer, which is why this
+// is the property and not a derivation.
+//
+// CommonMark's "Unicode whitespace character" in the emphasis rules
+// is this, and markdown-nv is the consumer.
+pub fn is_whitespace(ch: Int) -> Bool []
+    todo("unicode-nv.uclass.is_whitespace")
+
+// is_control answers the Cc category: the C0 and C1 controls.
+pub fn is_control(ch: Int) -> Bool []
+    todo("unicode-nv.uclass.is_control")
+
+// is_mark answers Mn, Mc or Me.
+pub fn is_mark(ch: Int) -> Bool []
+    todo("unicode-nv.uclass.is_mark")
+
+// is_punctuation answers any of the P categories.
+//
+// CommonMark's "Unicode punctuation character" in the flanking rules
+// is this PLUS the S categories, as of CommonMark 0.30 — so
+// markdown-nv calls both this and `is_symbol` rather than this alone,
+// and the README says so where it explains the dependency.
+pub fn is_punctuation(ch: Int) -> Bool []
+    todo("unicode-nv.uclass.is_punctuation")
+
+// is_symbol answers any of the S categories: Sm, Sc, Sk, So.
+pub fn is_symbol(ch: Int) -> Bool []
+    todo("unicode-nv.uclass.is_symbol")
+
+// is_uppercase answers the Uppercase property.
+//
+// The property, not the Lu category: it also covers the
+// Other_Uppercase codepoints, which is the set a case-insensitive
+// comparison has to agree with.
+pub fn is_uppercase(ch: Int) -> Bool []
+    todo("unicode-nv.uclass.is_uppercase")
+
+// is_lowercase answers the Lowercase property.
+pub fn is_lowercase(ch: Int) -> Bool []
+    todo("unicode-nv.uclass.is_lowercase")
+
+// is_id_start answers UAX #31's ID_Start.
+//
+// What may begin an identifier: the letters, the letter numbers, and
+// the stability additions.  A language that wants `_` to start one
+// adds it itself — UAX #31 does not, deliberately, and a package that
+// silently added it would make every language that used it disagree
+// with the annex.
+//
+// ```novo
+// use uclass
+//
+// fn main() [io]
+//     if uclass.is_id_start(0x03B1)          // a Greek alpha
+//         println("may begin an identifier")
+// ```
+pub fn is_id_start(ch: Int) -> Bool []
+    todo("unicode-nv.uclass.is_id_start")
+
+// is_id_continue answers UAX #31's ID_Continue.
+pub fn is_id_continue(ch: Int) -> Bool []
+    todo("unicode-nv.uclass.is_id_continue")
+
+// is_xid_start answers XID_Start — ID_Start closed under NFKC.
+//
+// The one to use when identifiers are normalised before they are
+// compared, which is what UAX #31 § 5.1 recommends and what stops two
+// visually identical identifiers from being different symbols.
+pub fn is_xid_start(ch: Int) -> Bool []
+    todo("unicode-nv.uclass.is_xid_start")
+
+// is_xid_continue answers XID_Continue.
+pub fn is_xid_continue(ch: Int) -> Bool []
+    todo("unicode-nv.uclass.is_xid_continue")
+
+// is_ascii answers whether the codepoint is below 0x80.
+pub fn is_ascii(ch: Int) -> Bool []
+    todo("unicode-nv.uclass.is_ascii")
+
+// is_ascii_digit answers `0` to `9` and nothing else.
+pub fn is_ascii_digit(ch: Int) -> Bool []
+    todo("unicode-nv.uclass.is_ascii_digit")
+
+// is_ascii_alpha answers `A`-`Z` and `a`-`z` and nothing else.
+pub fn is_ascii_alpha(ch: Int) -> Bool []
+    todo("unicode-nv.uclass.is_ascii_alpha")
+
+// is_ascii_whitespace answers space, tab, newline, carriage return
+// and form feed — the HTML and CommonMark definition of ASCII
+// whitespace, and nothing else.
+pub fn is_ascii_whitespace(ch: Int) -> Bool []
+    todo("unicode-nv.uclass.is_ascii_whitespace")
+
+// is_valid_scalar answers whether the integer is a Unicode scalar
+// value: in range, and not a surrogate.
+//
+// The check every decoder owes its caller, and the one a caller that
+// built a codepoint out of arithmetic — a numeric character reference
+// in HTML, a `\u` escape in JSON — has to make before treating it as
+// text.
+pub fn is_valid_scalar(ch: Int) -> Bool []
+    todo("unicode-nv.uclass.is_valid_scalar")

@@ -1,0 +1,86 @@
+// embedded_probe.nv — this package's device claim, as a program that
+// either builds for a Cortex-M or does not.
+//
+// It is not a test.  `scripts/shard_audit.sh`'s `core-embedded` row
+// copies it and the modules it names into a package of its own and
+// runs
+//
+//   novo build --target=nrf52-qemu src/probe.nv
+//
+// which produces a real Cortex-M4 ELF or fails.
+//
+// WHAT THE CLAIM COVERS, AND WHAT IT DOES NOT.  `uwidth`, `ugrapheme`
+// and `uclass`'s predicates read tables of about 27 KB in total, and a
+// device that drives a serial console or a small display needs exactly
+// them: how many cells does this character take, and where does one
+// character end.  That is the claim, and this probe is it.
+//
+// `unorm` and `ucase` are NOT in the probe and are not claimed.  Their
+// tables are about 245 KB generated, which is most of an nRF52's
+// flash, and a firmware that genuinely needs normalisation reaches it
+// through `udata.data_from_pack` with the tables in an external flash
+// region the host read for it.  Leaving them out of the probe is the
+// honest form of that: the claim is for the half that fits, and the
+// README says which half.
+//
+// WHAT THE TIER ACTUALLY CHECKS AT 0.0.1 is narrower than it will be,
+// and saying so is more useful than pretending otherwise: every body
+// under `src/` is a `todo()`, so what links today is the SIGNATURES
+// and the types — an `Int` in and out, a `?UniCluster`, a struct of
+// four Ints.  There is no table in the binary yet, so this probe does
+// not yet prove that 27 KB fits; it proves that nothing in the shape
+// of the surface needs an allocator or a host.  Keeping it green with
+// the tables in is a named cost of the implementation step.
+
+use uwidth
+use ugrapheme
+use uclass
+
+// Every answer this probe checks, folded into one number so a single
+// comparison decides the run.  A firmware image has one line of
+// output; making it depend on all of them is what stops a passing run
+// from meaning "the first call linked".
+@tier(rt)
+fn score() -> Int
+    var n = 0
+    // The width rule, which is the value textwrap-nv holds: one Int
+    // in, one Int out, and no table argument anywhere in the call.
+    if uwidth.char_width(0x41) == 1
+        n = n + 1
+    if uwidth.char_width(0x4E16) == 2
+        n = n + 1
+    if uwidth.is_zero_width(0x0301)
+        n = n + 1
+    // The break machine as a value, fed one codepoint, with the next
+    // state read back off the step it returned.  This is the shape a
+    // terminal uses and the one that has to work with no heap.
+    let s = ugrapheme.break_state()
+    let first = ugrapheme.break_step(s, 0x61)
+    if first.boundary
+        n = n + 1
+    let second = ugrapheme.break_step(first.state, 0x0308)
+    if second.boundary == false
+        n = n + 1
+    if second.state.regional_run == 0
+        n = n + 1
+    // The predicates that take no data handle.
+    if uclass.is_ascii_digit(0x30)
+        n = n + 1
+    if uclass.is_valid_scalar(0xD800) == false
+        n = n + 1
+    n
+
+@tier(rt)
+fn main() [hw, time]
+    bsp.board.init()
+    // 8 is the number of checks in `score` on the path a linked build
+    // takes.  The count is printed on a failure rather than only
+    // compared, so a device that disagrees with the host says HOW MANY
+    // it lost and a bisect has somewhere to start.
+    let n = score()
+    if n == 8
+        hal.uart.write("PASS: unicode-embedded\n")
+    else
+        hal.uart.write("FAIL: unicode-embedded\n")
+    loop
+        core.rt.sleep_ms(1000)
