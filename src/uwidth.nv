@@ -84,7 +84,7 @@ fn range_width(text: Str, start: Int, end: Int) -> Int
     var widest = 0
     var regionals = 0
     var i = start
-    for _ in 0..(end - start)
+    for _ in 0..end - start
         if i >= end
             break
         let ch = utbl.cp_at(text, i)
@@ -140,8 +140,8 @@ pub enum UniEastAsian
 //     println(str.from_int(uwidth.char_width(0x4E16)))    // 2 — an ideograph
 //     println(str.from_int(uwidth.char_width(0x0301)))    // 0 — a combining acute
 // ```
-@tier(embedded)
-pub fn char_width(ch: Int) -> Int []
+pub @tier(embedded)
+fn char_width(ch: Int) -> Int []
     let c = class_of(ch)
     if (c & EA_ZERO) != 0
         0
@@ -158,8 +158,8 @@ pub fn char_width(ch: Int) -> Int []
 // because a flag would not fit in a `WrapWidth`, and because a
 // program that needs this knows it at start-up and never changes its
 // mind mid-line.
-@tier(embedded)
-pub fn char_width_cjk(ch: Int) -> Int []
+pub @tier(embedded)
+fn char_width_cjk(ch: Int) -> Int []
     let c = class_of(ch)
     if (c & EA_ZERO) != 0
         0
@@ -178,8 +178,8 @@ pub fn char_width_cjk(ch: Int) -> Int []
 // `cluster_width` is the function that gets those right; this one is
 // what a caller wants for text that has no such sequences in it, and
 // it is faster because it never has to segment.
-@tier(embedded)
-pub fn str_width(text: Str) -> Int []
+pub @tier(embedded)
+fn str_width(text: Str) -> Int []
     var total = 0
     var i = 0
     for _ in 0..str.len(text)
@@ -199,8 +199,8 @@ pub fn str_width(text: Str) -> Int []
 // A caller with a string rather than a single cluster walks
 // `ugrapheme.cursor` and calls this per cluster; `text_width` below
 // does exactly that, and is the function most callers want.
-@tier(embedded)
-pub fn cluster_width(cluster: Str) -> Int []
+pub @tier(embedded)
+fn cluster_width(cluster: Str) -> Int []
     range_width(cluster, 0, str.len(cluster))
 
 // text_width is the width of a string, measured cluster by cluster.
@@ -209,8 +209,8 @@ pub fn cluster_width(cluster: Str) -> Int []
 // with `ugrapheme` and sums `cluster_width`, so every emoji sequence
 // counts once.  Use it when the text can contain anything; use
 // `str_width` when it cannot and the loop is hot.
-@tier(embedded)
-pub fn text_width(text: Str) -> Int []
+pub @tier(embedded)
+fn text_width(text: Str) -> Int []
     var total = 0
     var at = 0
     for _ in 0..str.len(text)
@@ -232,8 +232,8 @@ pub fn text_width(text: Str) -> Int []
 // truncation that let it would produce a line one column too long,
 // which is the bug that makes a status bar wrap and scroll the whole
 // screen.
-@tier(embedded)
-pub fn fit_prefix(text: Str, columns: Int) -> Int []
+pub @tier(embedded)
+fn fit_prefix(text: Str, columns: Int) -> Int []
     var used = 0
     var at = 0
     var fits = 0
@@ -253,8 +253,8 @@ pub fn fit_prefix(text: Str, columns: Int) -> Int []
 //
 // For a caller writing its own policy for the ambiguous class, or
 // reporting why a string measured the way it did.
-@tier(embedded)
-pub fn east_asian_width(ch: Int) -> UniEastAsian []
+pub @tier(embedded)
+fn east_asian_width(ch: Int) -> UniEastAsian []
     match class_of(ch) & EA_MASK
         1 => EaNarrow
         2 => EaWide
@@ -264,8 +264,8 @@ pub fn east_asian_width(ch: Int) -> UniEastAsian []
         _ => EaNeutral
 
 // is_wide answers whether the codepoint is Wide or Fullwidth.
-@tier(embedded)
-pub fn is_wide(ch: Int) -> Bool []
+pub @tier(embedded)
+fn is_wide(ch: Int) -> Bool []
     let e = class_of(ch) & EA_MASK
     e == 2 or e == 3
 
@@ -278,8 +278,8 @@ pub fn is_wide(ch: Int) -> Bool []
 // it is not text either, and a caller measuring text that might
 // contain one wants to know rather than to have it silently measure
 // as nothing.
-@tier(embedded)
-pub fn is_zero_width(ch: Int) -> Bool []
+pub @tier(embedded)
+fn is_zero_width(ch: Int) -> Bool []
     (class_of(ch) & EA_ZERO) != 0
 
 // is_ambiguous answers whether the codepoint's width depends on the
@@ -288,6 +288,6 @@ pub fn is_zero_width(ch: Int) -> Bool []
 // The question a program asks once, at start-up, to decide between
 // `char_width` and `char_width_cjk` — or to warn that its output will
 // be misaligned on somebody else's terminal.
-@tier(embedded)
-pub fn is_ambiguous(ch: Int) -> Bool []
+pub @tier(embedded)
+fn is_ambiguous(ch: Int) -> Bool []
     (class_of(ch) & EA_MASK) == 5

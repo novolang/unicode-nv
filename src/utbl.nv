@@ -119,7 +119,7 @@ fn find_pair(t: Str, esz: Int, a: Int, b: Int) -> Int
         if k == a and k2 == b
             at = off
             break
-        elif k < a or (k == a and k2 < b)
+        elif k < a or k == a and k2 < b
             lo = mid + 1
         else
             hi = mid - 1
@@ -208,10 +208,12 @@ fn cp_start(text: Str, at: Int) -> Int
 // length where the `Str` forms take a whole table.
 
 // The three-byte key `esz` entries into a packed section.
+@tier(app)
 fn pkey(t: [u8], at: Int) -> Int
     (list.get(t, at, 0) << 16) | (list.get(t, at + 1, 0) << 8) | list.get(t, at + 2, 0)
 
 // The `w`-byte big-endian value at byte offset `at` of a packed blob.
+@tier(app)
 fn pvalue(t: [u8], at: Int, w: Int) -> Int
     var v = 0
     for i in 0..w
@@ -219,9 +221,10 @@ fn pvalue(t: [u8], at: Int, w: Int) -> Int
     v
 
 // `cover`, over the packed section at `base` holding `n` bytes.
+@tier(app)
 fn pcover(t: [u8], base: Int, n: Int, esz: Int, cp: Int) -> Int
     var lo = 0
-    var hi = (n / esz) - 1
+    var hi = n / esz - 1
     var found = 0
     for _ in 0..STEPS
         if lo > hi
@@ -236,9 +239,10 @@ fn pcover(t: [u8], base: Int, n: Int, esz: Int, cp: Int) -> Int
 
 // `find`, over the packed section at `base` holding `n` bytes.  The
 // answer is an offset into the WHOLE blob, as `pvalue` wants it.
+@tier(app)
 fn pfind(t: [u8], base: Int, n: Int, esz: Int, cp: Int) -> Int
     var lo = 0
-    var hi = (n / esz) - 1
+    var hi = n / esz - 1
     var at = 0 - 1
     for _ in 0..STEPS
         if lo > hi
@@ -256,9 +260,10 @@ fn pfind(t: [u8], base: Int, n: Int, esz: Int, cp: Int) -> Int
     at
 
 // `find_pair`, over the packed section at `base` holding `n` bytes.
+@tier(app)
 fn pfind_pair(t: [u8], base: Int, n: Int, esz: Int, a: Int, b: Int) -> Int
     var lo = 0
-    var hi = (n / esz) - 1
+    var hi = n / esz - 1
     var at = 0 - 1
     for _ in 0..STEPS
         if lo > hi
@@ -270,8 +275,39 @@ fn pfind_pair(t: [u8], base: Int, n: Int, esz: Int, a: Int, b: Int) -> Int
         if k == a and k2 == b
             at = off
             break
-        elif k < a or (k == a and k2 < b)
+        elif k < a or k == a and k2 < b
             lo = mid + 1
         else
             hi = mid - 1
     at
+
+// A string's bytes as a list.
+//
+// The bridge between the two spellings of "some bytes" this package
+// meets: a `Str` for the tables and the caller's text, a `[u8]` for the
+// buffers `normalize_into`, `fold_into` and `pack_bytes` append to.
+@tier(app)
+fn bytes_of(s: Str) -> [u8]
+    // The lambda is BOUND WITH ITS TYPE rather than written inline:
+    // the device build type-checks strictly and cannot infer a
+    // `list.map` callable's parameter from the list it is handed
+    // (E2000, "strict-types boundary lambda consumed").
+    let at: fn(Int) -> Int = i => str.byte_at_or(s, i, 0)
+    list.map(list.range(0, str.len(s)), at)
+
+// The UTF-8 bytes of a list of codepoints.
+//
+// Through `str_of` rather than a `list.flat_map` over the codepoints:
+// the higher-order lowering guards on the callable's SHAPE and does not
+// match a local holding a typed lambda (E6001), while the device build
+// will not infer an untyped one.  Encoding once into a `Str` and taking
+// its bytes needs neither.
+@tier(app)
+fn utf8_of(cps: [Int]) -> [u8]
+    bytes_of(str_of(cps))
+
+// A list of codepoints as a string.
+@tier(app)
+fn str_of(cps: [Int]) -> Str
+    let enc: fn(Int) -> Str = c => str.from_char(c)
+    str.join(list.map(cps, enc), "")

@@ -83,7 +83,6 @@ use udbcat
 use udbnorm
 use utbl
 
-
 // The Unicode version every table in this package is generated from.
 //
 // It is public because a caller comparing two systems' normalisation
@@ -148,6 +147,7 @@ const PACK_FORMAT = 1
 // match arm is a BINDER and not the constant it looks like — the
 // compiler says so (W0000, "unreachable match arm"), and the first arm
 // would otherwise answer for every id.
+@tier(app)
 fn tbl_str(id: Int) -> Str
     if id == T_CAT
         udbcat.CAT
@@ -171,6 +171,7 @@ fn tbl_str(id: Int) -> Str
         udbnorm.QC
 
 // The entry size of the table a tier-two id names.
+@tier(app)
 fn tbl_esz(id: Int) -> Int
     if id == T_CAT
         udbcat.CAT_ESZ
@@ -195,18 +196,22 @@ fn tbl_esz(id: Int) -> Int
 
 // Whether this handle reads out of a caller's blob rather than out of
 // the constants.
+@tier(app)
 fn packed(d: UniData) -> Bool
     list.is_empty(d.pack) == false
 
 // The byte offset in a pack at which the length directory starts.
+@tier(app)
 fn dir_at(blob: [u8]) -> Int
     PACK_HEADER + list.get(blob, 11, 0)
 
 // The declared length of section `id` in a pack.
+@tier(app)
 fn sect_len(blob: [u8], id: Int) -> Int
     utbl.pvalue(blob, dir_at(blob) + id * 4, 4)
 
 // The byte offset at which section `id`'s payload starts in a pack.
+@tier(app)
 fn sect_at(blob: [u8], id: Int) -> Int
     var at = dir_at(blob) + T_COUNT * 4
     for i in 0..id
@@ -214,6 +219,7 @@ fn sect_at(blob: [u8], id: Int) -> Int
     at
 
 // The covering lookup for `cp` in tier-two table `id`.
+@tier(app)
 fn t_cover(d: UniData, id: Int, cp: Int) -> Int
     if packed(d)
         utbl.pcover(d.pack, sect_at(d.pack, id), sect_len(d.pack, id), tbl_esz(id), cp)
@@ -224,6 +230,7 @@ fn t_cover(d: UniData, id: Int, cp: Int) -> Int
 //
 // The offset is into whichever medium the handle reads, so it is only
 // ever handed back to `t_value`.
+@tier(app)
 fn t_find(d: UniData, id: Int, cp: Int) -> Int
     if packed(d)
         utbl.pfind(d.pack, sect_at(d.pack, id), sect_len(d.pack, id), tbl_esz(id), cp)
@@ -231,6 +238,7 @@ fn t_find(d: UniData, id: Int, cp: Int) -> Int
         utbl.find(tbl_str(id), tbl_esz(id), cp)
 
 // The offset of the entry keyed by the pair `(a, b)`, or -1.
+@tier(app)
 fn t_find_pair(d: UniData, id: Int, a: Int, b: Int) -> Int
     if packed(d)
         utbl.pfind_pair(d.pack, sect_at(d.pack, id), sect_len(d.pack, id), tbl_esz(id), a, b)
@@ -238,6 +246,7 @@ fn t_find_pair(d: UniData, id: Int, a: Int, b: Int) -> Int
         utbl.find_pair(tbl_str(id), tbl_esz(id), a, b)
 
 // The `w`-byte value at an offset `t_find` gave back.
+@tier(app)
 fn t_value(d: UniData, id: Int, at: Int, w: Int) -> Int
     if packed(d)
         utbl.pvalue(d.pack, at, w)
@@ -245,6 +254,7 @@ fn t_value(d: UniData, id: Int, at: Int, w: Int) -> Int
         utbl.value(tbl_str(id), at, w)
 
 // The codepoint at index `i` of a three-byte pool.
+@tier(app)
 fn t_pool(d: UniData, id: Int, i: Int) -> Int
     if packed(d)
         utbl.pvalue(d.pack, sect_at(d.pack, id) + i * 3, 3)
@@ -298,8 +308,11 @@ pub struct UniData
 //     let d = udata.data_full()
 //     println(udata.data_version(d))
 // ```
-pub fn data_full() -> UniData []
-    UniData { version: UNICODE_VERSION, table_bytes: udbcat.BYTES + udbcase.BYTES + udbnorm.BYTES, complete: true }
+pub @tier(app)
+fn data_full() -> UniData []
+    UniData { version: UNICODE_VERSION,
+        table_bytes: udbcat.BYTES + udbcase.BYTES + udbnorm.BYTES,
+        complete: true }
 
 // data_compact is the same tables cut to the Basic Multilingual Plane.
 //
@@ -311,8 +324,11 @@ pub fn data_full() -> UniData []
 //
 // For the program that wants canonical composition of European text on
 // a device, and knows it.
-pub fn data_compact() -> UniData []
-    UniData { version: UNICODE_VERSION, table_bytes: udbcat.BMP_BYTES + udbcase.BMP_BYTES + udbnorm.BMP_BYTES, complete: false }
+pub @tier(app)
+fn data_compact() -> UniData []
+    UniData { version: UNICODE_VERSION,
+        table_bytes: udbcat.BMP_BYTES + udbcase.BMP_BYTES + udbnorm.BMP_BYTES,
+        complete: false }
 
 // data_from_pack reads the tables out of bytes the caller already
 // holds.
@@ -329,7 +345,8 @@ pub fn data_compact() -> UniData []
 // The blob is BORROWED, not copied: every lookup reads out of the
 // slice the caller passed, so the caller must keep it alive for as
 // long as the `UniData`.
-pub fn data_from_pack(blob: [u8]) -> ?UniData []
+pub @tier(app)
+fn data_from_pack(blob: [u8]) -> ?UniData []
     let n = list.len(blob)
     if n < PACK_HEADER or magic_ok(blob) == false
         None
@@ -348,7 +365,10 @@ pub fn data_from_pack(blob: [u8]) -> ?UniData []
             if total != n
                 None
             else
-                Some(UniData { version: pack_version(blob, vlen), table_bytes: n - dir_at(blob) - T_COUNT * 4, complete: true, pack: blob })
+                Some(UniData { version: pack_version(blob, vlen),
+                    table_bytes: n - dir_at(blob) - T_COUNT * 4,
+                    complete: true,
+                    pack: blob })
 
 // pack_bytes writes the compiled-in tables back out in the packed
 // form, appended to the caller's buffer.
@@ -357,28 +377,25 @@ pub fn data_from_pack(blob: [u8]) -> ?UniData []
 // takes without this package shipping a second program to generate
 // one, and so that a caller can check a pack it was given against the
 // tables it has.
-pub fn pack_bytes(out: [u8], d: UniData) -> [u8] []
-    var out2 = out
-    for i in 0..str.len(PACK_MAGIC)
-        out2 = list.push(out2, str.byte_at_or(PACK_MAGIC, i, 0))
-    out2 = list.push(out2, PACK_FORMAT)
+pub @tier(app)
+fn pack_bytes(out: [u8], d: UniData) -> [u8] []
     var total = PACK_HEADER + str.len(UNICODE_VERSION) + T_COUNT * 4
     for i in 0..T_COUNT
         total = total + str.len(tbl_str(i))
+    var out2 = list.append(out, utbl.bytes_of(PACK_MAGIC))
+    out2 = list.push(out2, PACK_FORMAT)
     out2 = be4(out2, total)
     out2 = list.push(out2, str.len(UNICODE_VERSION))
-    for i in 0..str.len(UNICODE_VERSION)
-        out2 = list.push(out2, str.byte_at_or(UNICODE_VERSION, i, 0))
+    out2 = list.append(out2, utbl.bytes_of(UNICODE_VERSION))
     for i in 0..T_COUNT
         out2 = be4(out2, str.len(tbl_str(i)))
     for i in 0..T_COUNT
-        let t = tbl_str(i)
-        for j in 0..str.len(t)
-            out2 = list.push(out2, str.byte_at_or(t, j, 0))
+        out2 = list.append(out2, utbl.bytes_of(tbl_str(i)))
     out2
 
 // data_version is the Unicode version the handle's tables came from.
-pub fn data_version(d: UniData) -> Str []
+pub @tier(app)
+fn data_version(d: UniData) -> Str []
     d.version
 
 // data_covers answers whether the handle can speak for a codepoint.
@@ -389,13 +406,15 @@ pub fn data_version(d: UniData) -> Str []
 // having no mapping and no decomposition — the identity answer — so
 // this is the question to ask BEFORE trusting a result rather than a
 // way to interpret one afterwards.
-pub fn data_covers(d: UniData, ch: Int) -> Bool []
+pub @tier(app)
+fn data_covers(d: UniData, ch: Int) -> Bool []
     if ch < 0 or ch > 0x10FFFF
         false
     else
         d.complete or ch <= 0xFFFF
 
 // Whether a blob opens with `PACK_MAGIC`.
+@tier(app)
 fn magic_ok(blob: [u8]) -> Bool
     var ok = true
     for i in 0..str.len(PACK_MAGIC)
@@ -404,13 +423,13 @@ fn magic_ok(blob: [u8]) -> Bool
     ok
 
 // The version string a pack declares.
+@tier(app)
 fn pack_version(blob: [u8], vlen: Int) -> Str
-    var v = ""
-    for i in 0..vlen
-        v = v + str.from_byte(list.get(blob, PACK_HEADER + i, 0))
-    v
+    let byte: fn(Int) -> Str = i => str.from_byte(list.get(blob, PACK_HEADER + i, 0))
+    str.join(list.map(list.range(0, vlen), byte), "")
 
 // `n` appended to a buffer as four big-endian bytes.
+@tier(app)
 fn be4(out: [u8], n: Int) -> [u8]
     var o = out
     o = list.push(o, (n >>> 24) & 0xFF)

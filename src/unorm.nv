@@ -75,24 +75,24 @@ const QC_M = 2
 // Whether `form` composes after decomposing.
 fn composes(form: UniForm) -> Bool
     match form
-        FormNfc => true
+        FormNfc  => true
         FormNfkc => true
-        _ => false
+        _        => false
 
 // Whether `form` uses the compatibility decompositions.
 fn compat_form(form: UniForm) -> Bool
     match form
         FormNfkd => true
         FormNfkc => true
-        _ => false
+        _        => false
 
 // Which pair of bits in `udbnorm.QC` a form reads.
 fn qc_shift(form: UniForm) -> Int
     match form
-        FormNfd => 0
-        FormNfc => 2
+        FormNfd  => 0
+        FormNfc  => 2
         FormNfkd => 4
-        _ => 6
+        _        => 6
 
 // The quick-check property of `ch` for `form`.
 fn qc_of(d: udata.UniData, ch: Int, form: UniForm) -> Int
@@ -109,7 +109,7 @@ fn is_hangul(ch: Int) -> Bool
 fn hangul_decompose(out: [Int], ch: Int) -> [Int]
     let index = ch - S_BASE
     var o = list.push(out, L_BASE + index / N_COUNT)
-    o = list.push(o, V_BASE + (index % N_COUNT) / T_COUNT)
+    o = list.push(o, V_BASE + index % N_COUNT / T_COUNT)
     let t = index % T_COUNT
     if t != 0
         o = list.push(o, T_BASE + t)
@@ -199,7 +199,8 @@ fn composed(d: udata.UniData, src: [Int]) -> [Int]
         var absorbed = false
         if starter >= 0 and (last_cc < cc or last_cc == 0)
             match compose_pair(d, list.get(out, starter, 0), ch)
-                None => absorbed = false
+                None       =>
+                    absorbed = false
                 Some(comp) =>
                     out[starter] = comp
                     absorbed = true
@@ -226,24 +227,6 @@ fn normalized_cps(d: udata.UniData, text: Str, form: UniForm) -> [Int]
 fn safe_starter(d: udata.UniData, text: Str, at: Int, form: UniForm) -> Bool
     let ch = utbl.cp_at(text, at)
     combining_class(d, ch) == 0 and qc_of(d, ch, form) == QC_Y
-
-// The codepoints of `text` written into `out` as UTF-8.
-fn emit_utf8(out: [u8], cps: [Int]) -> [u8]
-    var o = out
-    for i in 0..list.len(cps)
-        let piece = str.from_char(list.get(cps, i, 0))
-        for j in 0..str.len(piece)
-            o = list.push(o, str.byte_at_or(piece, j, 0))
-    o
-
-// The codepoints as a string.
-fn to_str(cps: [Int]) -> Str
-    let sb = str.builder_new()
-    for i in 0..list.len(cps)
-        str.builder_append(sb, str.from_char(list.get(cps, i, 0)))
-    let out = str.builder_to_str(sb)
-    str.builder_drop(sb)
-    out
 
 // The normalised codepoints of the starter-run of `text` that begins at
 // byte `at`, and where that run ends.
@@ -313,7 +296,7 @@ pub fn normalize(d: udata.UniData, text: Str, form: UniForm) -> Str []
     if is_normalized(d, text, form)
         text
     else
-        to_str(normalized_cps(d, text, form))
+        utbl.str_of(normalized_cps(d, text, form))
 
 // normalize_into appends the normalised text to a caller's buffer.
 //
@@ -322,7 +305,7 @@ pub fn normalize(d: udata.UniData, text: Str, form: UniForm) -> Str []
 // buffer instead of producing one string per input.  The same shape
 // numfmt-nv and ansi-nv use for the same reason.
 pub fn normalize_into(out: [u8], d: udata.UniData, text: Str, form: UniForm) -> [u8] []
-    emit_utf8(out, normalized_cps(d, text, form))
+    list.append(out, utbl.utf8_of(normalized_cps(d, text, form)))
 
 // quick_check is UAX #15's quick check, which never allocates.
 //
@@ -370,9 +353,9 @@ pub fn quick_check(d: udata.UniData, text: Str, form: UniForm) -> UniQuickCheck 
 // compares as it goes rather than building the normalised form.
 pub fn is_normalized(d: udata.UniData, text: Str, form: UniForm) -> Bool []
     match quick_check(d, text, form)
-        QcYes => true
-        QcNo => false
-        QcMaybe => to_str(normalized_cps(d, text, form)) == text
+        QcYes   => true
+        QcNo    => false
+        QcMaybe => utbl.str_of(normalized_cps(d, text, form)) == text
 
 // compare decides canonical equivalence without normalising either
 // side.
@@ -495,7 +478,7 @@ fn compare_cps_of(a: Str, b: Str) -> Int
     var i = 0
     var j = 0
     var answer = 0
-    for _ in 0..(str.len(a) + str.len(b) + 1)
+    for _ in 0..str.len(a) + str.len(b) + 1
         if i >= str.len(a) or j >= str.len(b)
             break
         let x = utbl.cp_at(a, i)
@@ -543,7 +526,7 @@ fn compare_runs(d: udata.UniData, a: Str, b: Str, form: UniForm) -> Int
     var i = 0
     var j = 0
     var answer = 0
-    for _ in 0..(str.len(a) + str.len(b) + 1)
+    for _ in 0..str.len(a) + str.len(b) + 1
         if i >= str.len(a) or j >= str.len(b)
             break
         let ai = run_end(d, a, i)

@@ -128,8 +128,8 @@ fn full_of(d: udata.UniData, ch: Int, which: Int) -> [Int]
         if at >= 0
             let off = udata.t_value(d, udata.T_FULL, at + 3 + which * 3, 2)
             let n = udata.t_value(d, udata.T_FULL, at + 3 + which * 3 + 2, 1)
-            for i in 0..n
-                out = list.push(out, udata.t_pool(d, udata.T_FULLPOOL, off + i))
+            let pooled: fn(Int) -> Int = i => udata.t_pool(d, udata.T_FULLPOOL, off + i)
+            out = list.map(list.range(0, n), pooled)
     if list.is_empty(out)
         list.push(out, simple_of(d, ch, which))
     else
@@ -266,61 +266,44 @@ fn not_before_dot(d: udata.UniData, text: Str, after: Int) -> Bool
 // then the final sigma, then the unconditional table.
 fn lower_in_context(d: udata.UniData, text: Str, at: Int, after: Int, language: Str) -> [Int]
     let ch = utbl.cp_at(text, at)
-    var out: [Int] = []
     if is_turkic(language) and ch == I_DOTTED
-        out = list.push(out, 0x0069)
+        [0x0069]
     elif is_turkic(language) and ch == DOT_ABOVE and after_i(d, text, at)
-        out = out
+        // `0307; ; 0307; 0307; tr After_I` — the dot above is DROPPED,
+        // because the capital it sat on lowercased to a dotted i that
+        // already carries one.  An empty answer is the mapping.
+        []
     elif is_turkic(language) and ch == 0x0049 and not_before_dot(d, text, after)
-        out = list.push(out, I_DOTLESS)
+        [I_DOTLESS]
     elif is_lithuanian(language) and ch == 0x0049 and more_above(d, text, after)
-        out = list.push(list.push(out, 0x0069), DOT_ABOVE)
+        [0x0069, DOT_ABOVE]
     elif is_lithuanian(language) and ch == 0x004A and more_above(d, text, after)
-        out = list.push(list.push(out, 0x006A), DOT_ABOVE)
+        [0x006A, DOT_ABOVE]
     elif is_lithuanian(language) and ch == 0x012E and more_above(d, text, after)
-        out = list.push(list.push(out, 0x012F), DOT_ABOVE)
+        [0x012F, DOT_ABOVE]
+    elif ch == SIGMA and final_sigma(d, text, at, after)
+        [SIGMA_FINAL]
     elif ch == SIGMA
-        if final_sigma(d, text, at, after)
-            out = list.push(out, SIGMA_FINAL)
-        else
-            out = list.push(out, SIGMA_MEDIAL)
+        [SIGMA_MEDIAL]
     else
-        out = full_of(d, ch, M_LOWER)
-    out
+        full_of(d, ch, M_LOWER)
 
 // The codepoints one character uppercases to, in context.
 fn upper_in_context(d: udata.UniData, text: Str, at: Int, language: Str) -> [Int]
     let ch = utbl.cp_at(text, at)
-    var out: [Int] = []
     if is_turkic(language) and ch == 0x0069
-        out = list.push(out, I_DOTTED)
+        [I_DOTTED]
     elif is_lithuanian(language) and ch == DOT_ABOVE and after_soft_dotted(d, text, at)
-        out = out
+        // `0307; 0307; ; ; lt After_Soft_Dotted` — Lithuanian writes
+        // the dot on a lowercase i and drops it when the i becomes a
+        // capital, which already has none.
+        []
     else
-        out = full_of(d, ch, M_UPPER)
-    out
+        full_of(d, ch, M_UPPER)
 
 // The codepoints `ch` folds to.
 fn fold_cp(d: udata.UniData, ch: Int) -> [Int]
     full_of(d, ch, M_FOLD)
-
-// The codepoints of a list written into `out` as UTF-8.
-fn emit_utf8(out: [u8], cps: [Int]) -> [u8]
-    var o = out
-    for i in 0..list.len(cps)
-        let piece = str.from_char(list.get(cps, i, 0))
-        for j in 0..str.len(piece)
-            o = list.push(o, str.byte_at_or(piece, j, 0))
-    o
-
-// A list of codepoints as a string.
-fn to_str(cps: [Int]) -> Str
-    let sb = str.builder_new()
-    for i in 0..list.len(cps)
-        str.builder_append(sb, str.from_char(list.get(cps, i, 0)))
-    let out = str.builder_to_str(sb)
-    str.builder_drop(sb)
-    out
 
 // Every codepoint of `text` mapped by `which`, in context.
 //
@@ -340,8 +323,7 @@ fn map_text(d: udata.UniData, text: Str, which: Int, language: Str) -> [Int]
             piece = upper_in_context(d, text, at, language)
         else
             piece = fold_cp(d, utbl.cp_at(text, at))
-        for i in 0..list.len(piece)
-            out = list.push(out, list.get(piece, i, 0))
+        out = list.append(out, piece)
         at = after
     out
 
@@ -351,7 +333,7 @@ fn title_segment(d: udata.UniData, text: Str, start: Int, end: Int, language: St
     var out: [Int] = []
     var at = start
     var seen = false
-    for _ in 0..(end - start)
+    for _ in 0..end - start
         if at >= end
             break
         let after = at + utbl.seq_len(text, at)
@@ -367,8 +349,7 @@ fn title_segment(d: udata.UniData, text: Str, start: Int, end: Int, language: St
             piece = lower_in_context(d, text, at, after, language)
         else
             piece = list.push(piece, ch)
-        for i in 0..list.len(piece)
-            out = list.push(out, list.get(piece, i, 0))
+        out = list.append(out, piece)
         at = after
     out
 
@@ -406,14 +387,14 @@ pub const LANG_LITHUANIAN = "lt"
 //     println(ucase.to_lower(d, "STRASSE", LANG_ROOT))
 // ```
 pub fn to_lower(d: udata.UniData, text: Str, language: Str) -> Str []
-    to_str(map_text(d, text, M_LOWER, language))
+    utbl.str_of(map_text(d, text, M_LOWER, language))
 
 // to_upper is the string uppercased, under the full rules.
 //
 // May be LONGER than its input: "ß" becomes "SS", "ﬁ" becomes "FI",
 // and a Greek letter with a ypogegrammeni becomes two codepoints.
 pub fn to_upper(d: udata.UniData, text: Str, language: Str) -> Str []
-    to_str(map_text(d, text, M_UPPER, language))
+    utbl.str_of(map_text(d, text, M_UPPER, language))
 
 // to_title is the string title-cased: the first cased letter of each
 // word in its titlecase form, the rest lowercased.
@@ -430,10 +411,8 @@ pub fn to_title(d: udata.UniData, text: Str, language: Str) -> Str []
     let segments = ugrapheme.words(text)
     for i in 0..list.len(segments)
         let w = list.get(segments, i)
-        let piece = title_segment(d, text, w.start, w.end, language)
-        for j in 0..list.len(piece)
-            out = list.push(out, list.get(piece, j, 0))
-    to_str(out)
+        out = list.append(out, title_segment(d, text, w.start, w.end, language))
+    utbl.str_of(out)
 
 // fold is the string case-folded, for caseless comparison.
 //
@@ -448,7 +427,7 @@ pub fn to_title(d: udata.UniData, text: Str, language: Str) -> Str []
 // genuinely needs the Turkic fold uses `simple_fold` per codepoint and
 // applies its own rule; the README says so.
 pub fn fold(d: udata.UniData, text: Str) -> Str []
-    to_str(map_text(d, text, M_FOLD, LANG_ROOT))
+    utbl.str_of(map_text(d, text, M_FOLD, LANG_ROOT))
 
 // eq_fold is a caseless comparison that allocates nothing.
 //
@@ -463,7 +442,7 @@ pub fn eq_fold(d: udata.UniData, a: Str, b: Str) -> Bool []
     var ap = 0
     var bp = 0
     var same = true
-    for _ in 0..(str.len(a) + str.len(b) + 2)
+    for _ in 0..str.len(a) + str.len(b) + 2
         if ap >= list.len(abuf) and ai < str.len(a)
             abuf = fold_cp(d, utbl.cp_at(a, ai))
             ap = 0
@@ -486,15 +465,15 @@ pub fn eq_fold(d: udata.UniData, a: Str, b: Str) -> Bool []
 
 // to_lower_into appends the lowercased text to a caller's buffer.
 pub fn to_lower_into(out: [u8], d: udata.UniData, text: Str, language: Str) -> [u8] []
-    emit_utf8(out, map_text(d, text, M_LOWER, language))
+    list.append(out, utbl.utf8_of(map_text(d, text, M_LOWER, language)))
 
 // to_upper_into appends the uppercased text to a caller's buffer.
 pub fn to_upper_into(out: [u8], d: udata.UniData, text: Str, language: Str) -> [u8] []
-    emit_utf8(out, map_text(d, text, M_UPPER, language))
+    list.append(out, utbl.utf8_of(map_text(d, text, M_UPPER, language)))
 
 // fold_into appends the case-folded text to a caller's buffer.
 pub fn fold_into(out: [u8], d: udata.UniData, text: Str) -> [u8] []
-    emit_utf8(out, map_text(d, text, M_FOLD, LANG_ROOT))
+    list.append(out, utbl.utf8_of(map_text(d, text, M_FOLD, LANG_ROOT)))
 
 // simple_lower is the one-codepoint lowercase mapping.
 //

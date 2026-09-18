@@ -294,6 +294,7 @@ const PRED_NUMBER = 1 << 2
 const PRED_SPACE = 1 << 3
 
 // The predicate bits of `ch`.
+@tier(app)
 fn pred_of(ch: Int) -> Int
     if ch < 0 or ch > 0x10FFFF
         0
@@ -302,22 +303,26 @@ fn pred_of(ch: Int) -> Int
 
 // Whether `c` is AHLetter — ALetter or Hebrew_Letter, which UAX #29 § 4
 // treats as one class in WB5 through WB10.
+@tier(app)
 fn is_ahletter(c: Int) -> Bool
     c == WB_ALETTER or c == WB_HEBREW
 
 // Whether `c` is MidLetter or MidNumLetQ, the class WB6 and WB7 join
 // two letters across.
+@tier(app)
 fn is_midletterq(c: Int) -> Bool
     c == WB_MIDLETTER or c == WB_MIDNUMLET or c == WB_SQUOTE
 
 // Whether `c` is MidNum or MidNumLetQ, the class WB11 and WB12 join two
 // numbers across.
+@tier(app)
 fn is_midnumq(c: Int) -> Bool
     c == WB_MIDNUM or c == WB_MIDNUMLET or c == WB_SQUOTE
 
 // The Word_Break class `skip` places before `at`, with the Extend,
 // Format and ZWJ that WB4 makes invisible passed over; -1 when the text
 // runs out first.
+@tier(app)
 fn wb_before(text: Str, at: Int, skip: Int) -> Int
     var i = at
     var left = skip
@@ -336,6 +341,7 @@ fn wb_before(text: Str, at: Int, skip: Int) -> Int
 
 // The Word_Break class `skip` places at or after `at`, under the same
 // WB4 rule; -1 when the text runs out first.
+@tier(app)
 fn wb_after(text: Str, at: Int, skip: Int) -> Int
     let n = str.len(text)
     var i = at
@@ -354,6 +360,7 @@ fn wb_after(text: Str, at: Int, skip: Int) -> Int
     answer
 
 // How many regional indicators run up to `at`, for WB15 and WB16.
+@tier(app)
 fn ri_run_before(text: Str, at: Int) -> Int
     var i = at
     var n = 0
@@ -377,6 +384,7 @@ fn ri_run_before(text: Str, at: Int) -> Int
 // one of the annex's rules in its own order.  The three that read
 // `nnc` — WB6, WB7b and WB12 — are the lookahead that keeps the word
 // rules out of `break_step`.
+@tier(app)
 fn is_word_boundary(text: Str, at: Int) -> Bool
     let n = str.len(text)
     if at <= 0 or at >= n
@@ -431,11 +439,12 @@ fn is_word_boundary(text: Str, at: Int) -> Bool
                 brk = false
             elif pc == WB_EXTENDNUMLET and (is_ahletter(nc) or nc == WB_NUMERIC or nc == WB_KATAKANA)
                 brk = false
-            elif nc == WB_RI and (ri_run_before(text, at) % 2) == 1
+            elif nc == WB_RI and ri_run_before(text, at) % 2 == 1
                 brk = false
         brk
 
 // What the segment starting at byte `start` holds.
+@tier(app)
 fn word_kind(text: Str, start: Int) -> UniWordKind
     let ch = utbl.cp_at(text, start)
     let c = wb(ch)
@@ -554,9 +563,12 @@ pub struct UniWord
 //     if step.boundary
 //         println("a new cluster starts here")   // GB1, always
 // ```
-@tier(embedded)
-pub fn break_state() -> UniBreakState []
-    UniBreakState { previous: BREAK_START, regional_run: 0, pictographic_run: false, linker_run: 0 - 1 }
+pub @tier(embedded)
+fn break_state() -> UniBreakState []
+    UniBreakState { previous: BREAK_START,
+        regional_run: 0,
+        pictographic_run: false,
+        linker_run: 0 - 1 }
 
 // break_step feeds one codepoint to the machine.
 //
@@ -569,8 +581,8 @@ pub fn break_state() -> UniBreakState []
 // the codepoint after acting on the answer.  There is no way to ask
 // about the boundary after the last codepoint of the text, because
 // there is always one (GB2) and a call would only be able to say so.
-@tier(embedded)
-pub fn break_step(s: UniBreakState, ch: Int) -> UniBreakStep []
+pub @tier(embedded)
+fn break_step(s: UniBreakState, ch: Int) -> UniBreakStep []
     let p = s.previous
     let c = gcb(ch)
     let ic = incb(ch)
@@ -602,7 +614,7 @@ pub fn break_step(s: UniBreakState, ch: Int) -> UniBreakStep []
         brk = false
     elif p == GCB_ZWJ and s.pictographic_run and extpict(ch)
         brk = false
-    elif c == GCB_RI and (s.regional_run % 2) == 1
+    elif c == GCB_RI and s.regional_run % 2 == 1
         brk = false
     // The three counters, each of which exists because one rule cannot
     // be decided from the previous codepoint alone.
@@ -621,11 +633,15 @@ pub fn break_step(s: UniBreakState, ch: Int) -> UniBreakStep []
         linkers = s.linker_run + 1
     elif s.linker_run >= 0 and ic == INCB_EXTEND
         linkers = s.linker_run
-    let next = UniBreakState { previous: c, regional_run: regional, pictographic_run: pict, linker_run: linkers }
+    let next = UniBreakState { previous: c,
+        regional_run: regional,
+        pictographic_run: pict,
+        linker_run: linkers }
     UniBreakStep { state: next, boundary: brk }
 
 // cursor starts a walk at the beginning of a string.
-pub fn cursor(text: Str) -> UniCursor []
+pub @tier(app)
+fn cursor(text: Str) -> UniCursor []
     UniCursor { text: text, at: 0 }
 
 // cursor_at starts a walk at a byte offset.
@@ -636,7 +652,8 @@ pub fn cursor(text: Str) -> UniCursor []
 // resuming in the middle of a cluster gets the remainder as its first
 // answer, which is the only thing it can get without rescanning from
 // the start.
-pub fn cursor_at(text: Str, offset: Int) -> UniCursor []
+pub @tier(app)
+fn cursor_at(text: Str, offset: Int) -> UniCursor []
     UniCursor { text: text, at: utbl.cp_start(text, offset) }
 
 // cursor_next is the next cluster, or `None` at the end.
@@ -645,19 +662,21 @@ pub fn cursor_at(text: Str, offset: Int) -> UniCursor []
 // `cursor_next` for the range and `cursor_advance` for the next
 // cursor, so that a caller can look at a cluster and decide not to
 // consume it.
-pub fn cursor_next(c: UniCursor) -> ?UniCluster []
+pub @tier(app)
+fn cursor_next(c: UniCursor) -> ?UniCluster []
     if c.at >= str.len(c.text)
         None
     else
         Some(UniCluster { start: c.at, end: next_boundary(c.text, c.at) })
 
 // cursor_advance is the cursor positioned after the cluster.
-pub fn cursor_advance(c: UniCursor) -> UniCursor []
+pub @tier(app)
+fn cursor_advance(c: UniCursor) -> UniCursor []
     UniCursor { text: c.text, at: next_boundary(c.text, c.at) }
 
 // cursor_done answers whether the walk has reached the end.
-@tier(embedded)
-pub fn cursor_done(c: UniCursor) -> Bool []
+pub @tier(embedded)
+fn cursor_done(c: UniCursor) -> Bool []
     c.at >= str.len(c.text)
 
 // next_boundary is the byte offset of the next cluster boundary after
@@ -665,8 +684,8 @@ pub fn cursor_done(c: UniCursor) -> Bool []
 //
 // The string's length when `from` is already in the last cluster, so
 // a loop terminates without a special case.
-@tier(embedded)
-pub fn next_boundary(text: Str, from: Int) -> Int []
+pub @tier(embedded)
+fn next_boundary(text: Str, from: Int) -> Int []
     let n = str.len(text)
     if from >= n
         n
@@ -693,8 +712,8 @@ pub fn next_boundary(text: Str, from: Int) -> Int []
 // backspace in a long line should not rescan the line.
 //
 // Zero when `from` is already in the first cluster.
-@tier(embedded)
-pub fn prev_boundary(text: Str, from: Int) -> Int []
+pub @tier(embedded)
+fn prev_boundary(text: Str, from: Int) -> Int []
     if from <= 0
         0
     else
@@ -720,8 +739,8 @@ pub fn prev_boundary(text: Str, from: Int) -> Int []
 // False for an offset in the middle of a codepoint, as well as for
 // one in the middle of a cluster — an offset that is not a character
 // boundary is not a cluster boundary either.
-@tier(embedded)
-pub fn is_boundary(text: Str, at: Int) -> Bool []
+pub @tier(embedded)
+fn is_boundary(text: Str, at: Int) -> Bool []
     if utbl.cp_start(text, at) != at
         false
     elif at <= 0 or at >= str.len(text)
@@ -733,8 +752,8 @@ pub fn is_boundary(text: Str, at: Int) -> Bool []
 //
 // The answer to "how long is this name", which is the question
 // `str.len` is so often asked in place of.
-@tier(embedded)
-pub fn count(text: Str) -> Int []
+pub @tier(embedded)
+fn count(text: Str) -> Int []
     var n = 0
     var at = 0
     for _ in 0..str.len(text)
@@ -748,7 +767,8 @@ pub fn count(text: Str) -> Int []
 //
 // `None` past the end.  A range rather than a `Str`, for the same
 // reason `UniCluster` is one.
-pub fn nth(text: Str, index: Int) -> ?UniCluster []
+pub @tier(app)
+fn nth(text: Str, index: Int) -> ?UniCluster []
     var found: ?UniCluster = None
     var i = 0
     var at = 0
@@ -769,7 +789,8 @@ pub fn nth(text: Str, index: Int) -> ?UniCluster []
 // genuinely wants the list should not have to write the loop, and it
 // is documented as allocating so that a caller in a hot path knows to
 // use the cursor instead.
-pub fn clusters(text: Str) -> [UniCluster] []
+pub @tier(app)
+fn clusters(text: Str) -> [UniCluster] []
     var out: [UniCluster] = []
     var at = 0
     for _ in 0..str.len(text)
@@ -785,8 +806,8 @@ pub fn clusters(text: Str) -> [UniCluster] []
 // For "show the first 20 characters", where cutting at 20 bytes
 // splits a codepoint and cutting at 20 codepoints splits a family
 // emoji into a hand and a child.
-@tier(embedded)
-pub fn truncate_clusters(text: Str, count: Int) -> Int []
+pub @tier(embedded)
+fn truncate_clusters(text: Str, count: Int) -> Int []
     var n = 0
     var at = 0
     for _ in 0..str.len(text)
@@ -798,7 +819,8 @@ pub fn truncate_clusters(text: Str, count: Int) -> Int []
 
 // next_word is the byte offset of the next word boundary after
 // `from`, per UAX #29 § 4.
-pub fn next_word(text: Str, from: Int) -> Int []
+pub @tier(app)
+fn next_word(text: Str, from: Int) -> Int []
     let n = str.len(text)
     var at = utbl.cp_start(text, from) + utbl.seq_len(text, utbl.cp_start(text, from))
     if from >= n
@@ -816,7 +838,8 @@ pub fn next_word(text: Str, from: Int) -> Int []
 // prev_word is the byte offset of the word boundary before `from`.
 //
 // What "delete the previous word" needs.
-pub fn prev_word(text: Str, from: Int) -> Int []
+pub @tier(app)
+fn prev_word(text: Str, from: Int) -> Int []
     var last = 0
     var at = 0
     let n = str.len(text)
@@ -835,7 +858,8 @@ pub fn prev_word(text: Str, from: Int) -> Int []
 // that wants to rebuild the string from the segments can.  A
 // segmenter that dropped the gaps would be lossy, and a tokenizer
 // that needs to report a byte offset cannot use a lossy one.
-pub fn words(text: Str) -> [UniWord] []
+pub @tier(app)
+fn words(text: Str) -> [UniWord] []
     var out: [UniWord] = []
     let n = str.len(text)
     var start = 0

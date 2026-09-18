@@ -107,52 +107,54 @@ const CAT_COUNT = 30
 // The pair of `category_of`, and the reason both exist is that the
 // table stores an index: a round trip through the enum has to be
 // exactly the generator's order or every codepoint is relabelled.
+@tier(app)
 fn cat_index(c: UniCategory) -> Int
     match c
-        CatUppercaseLetter => 0
-        CatLowercaseLetter => 1
-        CatTitlecaseLetter => 2
-        CatModifierLetter => 3
-        CatOtherLetter => 4
-        CatNonspacingMark => 5
-        CatSpacingMark => 6
-        CatEnclosingMark => 7
-        CatDecimalNumber => 8
-        CatLetterNumber => 9
-        CatOtherNumber => 10
+        CatUppercaseLetter      => 0
+        CatLowercaseLetter      => 1
+        CatTitlecaseLetter      => 2
+        CatModifierLetter       => 3
+        CatOtherLetter          => 4
+        CatNonspacingMark       => 5
+        CatSpacingMark          => 6
+        CatEnclosingMark        => 7
+        CatDecimalNumber        => 8
+        CatLetterNumber         => 9
+        CatOtherNumber          => 10
         CatConnectorPunctuation => 11
-        CatDashPunctuation => 12
-        CatOpenPunctuation => 13
-        CatClosePunctuation => 14
-        CatInitialPunctuation => 15
-        CatFinalPunctuation => 16
-        CatOtherPunctuation => 17
-        CatMathSymbol => 18
-        CatCurrencySymbol => 19
-        CatModifierSymbol => 20
-        CatOtherSymbol => 21
-        CatSpaceSeparator => 22
-        CatLineSeparator => 23
-        CatParagraphSeparator => 24
-        CatControl => 25
-        CatFormat => 26
-        CatSurrogate => 27
-        CatPrivateUse => 28
-        _ => 29
+        CatDashPunctuation      => 12
+        CatOpenPunctuation      => 13
+        CatClosePunctuation     => 14
+        CatInitialPunctuation   => 15
+        CatFinalPunctuation     => 16
+        CatOtherPunctuation     => 17
+        CatMathSymbol           => 18
+        CatCurrencySymbol       => 19
+        CatModifierSymbol       => 20
+        CatOtherSymbol          => 21
+        CatSpaceSeparator       => 22
+        CatLineSeparator        => 23
+        CatParagraphSeparator   => 24
+        CatControl              => 25
+        CatFormat               => 26
+        CatSurrogate            => 27
+        CatPrivateUse           => 28
+        _                       => 29
 
 // The `UniCategory` a declaration index names.
+@tier(app)
 fn cat_of_index(i: Int) -> UniCategory
     match i
-        0 => CatUppercaseLetter
-        1 => CatLowercaseLetter
-        2 => CatTitlecaseLetter
-        3 => CatModifierLetter
-        4 => CatOtherLetter
-        5 => CatNonspacingMark
-        6 => CatSpacingMark
-        7 => CatEnclosingMark
-        8 => CatDecimalNumber
-        9 => CatLetterNumber
+        0  => CatUppercaseLetter
+        1  => CatLowercaseLetter
+        2  => CatTitlecaseLetter
+        3  => CatModifierLetter
+        4  => CatOtherLetter
+        5  => CatNonspacingMark
+        6  => CatSpacingMark
+        7  => CatEnclosingMark
+        8  => CatDecimalNumber
+        9  => CatLetterNumber
         10 => CatOtherNumber
         11 => CatConnectorPunctuation
         12 => CatDashPunctuation
@@ -172,7 +174,7 @@ fn cat_of_index(i: Int) -> UniCategory
         26 => CatFormat
         27 => CatSurrogate
         28 => CatPrivateUse
-        _ => CatUnassigned
+        _  => CatUnassigned
 
 // UniCategory is Unicode's general category.
 //
@@ -252,7 +254,8 @@ pub enum UniCategory
 // answer an unassigned codepoint gets; `udata.data_covers` is how a
 // caller tells those apart, and it has to ask before rather than
 // after.
-pub fn category(d: udata.UniData, ch: Int) -> UniCategory []
+pub @tier(app)
+fn category(d: udata.UniData, ch: Int) -> UniCategory []
     if udata.data_covers(d, ch) == false
         CatUnassigned
     else
@@ -263,7 +266,8 @@ pub fn category(d: udata.UniData, ch: Int) -> UniCategory []
 // For a diagnostic, a debugger's value renderer, or a program
 // matching a regular expression's `\p{Lu}` against a name it was
 // given as text.
-pub fn category_abbrev(c: UniCategory) -> Str []
+pub @tier(app)
+fn category_abbrev(c: UniCategory) -> Str []
     str.slice(ABBREVS, cat_index(c) * 2, cat_index(c) * 2 + 2)
 
 // category_named is the category an abbreviation names.
@@ -271,7 +275,8 @@ pub fn category_abbrev(c: UniCategory) -> Str []
 // `None` for a string that is not one of the thirty.  The pair with
 // `category_abbrev`, so a `\p{...}` in a pattern can be resolved once
 // at compile time rather than compared as text per character.
-pub fn category_named(abbrev: Str) -> ?UniCategory []
+pub @tier(app)
+fn category_named(abbrev: Str) -> ?UniCategory []
     var found: ?UniCategory = None
     for i in 0..CAT_COUNT
         if str.slice(ABBREVS, i * 2, i * 2 + 2) == abbrev
@@ -282,8 +287,8 @@ pub fn category_named(abbrev: Str) -> ?UniCategory []
 // Lo.
 //
 // No `UniData`: the letter ranges are their own compiled-in list.
-@tier(embedded)
-pub fn is_letter(ch: Int) -> Bool []
+pub @tier(embedded)
+fn is_letter(ch: Int) -> Bool []
     has(ch, P_LETTER)
 
 // is_digit answers whether the codepoint is a decimal digit — Nd.
@@ -292,14 +297,14 @@ pub fn is_letter(ch: Int) -> Bool []
 // narrower question, and the one a number parser should be asking:
 // accepting Devanagari digits in a program's integer literals is a
 // decision, not a default.
-@tier(embedded)
-pub fn is_digit(ch: Int) -> Bool []
+pub @tier(embedded)
+fn is_digit(ch: Int) -> Bool []
     has(ch, P_DECIMAL)
 
 // is_alphanumeric answers letter-or-number: Lu, Ll, Lt, Lm, Lo, Nd,
 // Nl, No.
-@tier(embedded)
-pub fn is_alphanumeric(ch: Int) -> Bool []
+pub @tier(embedded)
+fn is_alphanumeric(ch: Int) -> Bool []
     has(ch, P_LETTER | P_NUMBER)
 
 // is_whitespace answers the Unicode White_Space property.
@@ -314,18 +319,18 @@ pub fn is_alphanumeric(ch: Int) -> Bool []
 //
 // CommonMark's "Unicode whitespace character" in the emphasis rules
 // is this, and markdown-nv is the consumer.
-@tier(embedded)
-pub fn is_whitespace(ch: Int) -> Bool []
+pub @tier(embedded)
+fn is_whitespace(ch: Int) -> Bool []
     has(ch, P_SPACE)
 
 // is_control answers the Cc category: the C0 and C1 controls.
-@tier(embedded)
-pub fn is_control(ch: Int) -> Bool []
+pub @tier(embedded)
+fn is_control(ch: Int) -> Bool []
     has(ch, P_CONTROL)
 
 // is_mark answers Mn, Mc or Me.
-@tier(embedded)
-pub fn is_mark(ch: Int) -> Bool []
+pub @tier(embedded)
+fn is_mark(ch: Int) -> Bool []
     has(ch, P_MARK)
 
 // is_punctuation answers any of the P categories.
@@ -334,13 +339,13 @@ pub fn is_mark(ch: Int) -> Bool []
 // is this PLUS the S categories, as of CommonMark 0.30 — so
 // markdown-nv calls both this and `is_symbol` rather than this alone,
 // and the README says so where it explains the dependency.
-@tier(embedded)
-pub fn is_punctuation(ch: Int) -> Bool []
+pub @tier(embedded)
+fn is_punctuation(ch: Int) -> Bool []
     has(ch, P_PUNCT)
 
 // is_symbol answers any of the S categories: Sm, Sc, Sk, So.
-@tier(embedded)
-pub fn is_symbol(ch: Int) -> Bool []
+pub @tier(embedded)
+fn is_symbol(ch: Int) -> Bool []
     has(ch, P_SYMBOL)
 
 // is_uppercase answers the Uppercase property.
@@ -348,13 +353,13 @@ pub fn is_symbol(ch: Int) -> Bool []
 // The property, not the Lu category: it also covers the
 // Other_Uppercase codepoints, which is the set a case-insensitive
 // comparison has to agree with.
-@tier(embedded)
-pub fn is_uppercase(ch: Int) -> Bool []
+pub @tier(embedded)
+fn is_uppercase(ch: Int) -> Bool []
     has(ch, P_UPPER)
 
 // is_lowercase answers the Lowercase property.
-@tier(embedded)
-pub fn is_lowercase(ch: Int) -> Bool []
+pub @tier(embedded)
+fn is_lowercase(ch: Int) -> Bool []
     has(ch, P_LOWER)
 
 // is_id_start answers UAX #31's ID_Start.
@@ -372,13 +377,13 @@ pub fn is_lowercase(ch: Int) -> Bool []
 //     if uclass.is_id_start(0x03B1)          // a Greek alpha
 //         println("may begin an identifier")
 // ```
-@tier(embedded)
-pub fn is_id_start(ch: Int) -> Bool []
+pub @tier(embedded)
+fn is_id_start(ch: Int) -> Bool []
     has(ch, P_ID_START)
 
 // is_id_continue answers UAX #31's ID_Continue.
-@tier(embedded)
-pub fn is_id_continue(ch: Int) -> Bool []
+pub @tier(embedded)
+fn is_id_continue(ch: Int) -> Bool []
     has(ch, P_ID_CONTINUE)
 
 // is_xid_start answers XID_Start — ID_Start closed under NFKC.
@@ -386,35 +391,35 @@ pub fn is_id_continue(ch: Int) -> Bool []
 // The one to use when identifiers are normalised before they are
 // compared, which is what UAX #31 § 5.1 recommends and what stops two
 // visually identical identifiers from being different symbols.
-@tier(embedded)
-pub fn is_xid_start(ch: Int) -> Bool []
+pub @tier(embedded)
+fn is_xid_start(ch: Int) -> Bool []
     has(ch, P_XID_START)
 
 // is_xid_continue answers XID_Continue.
-@tier(embedded)
-pub fn is_xid_continue(ch: Int) -> Bool []
+pub @tier(embedded)
+fn is_xid_continue(ch: Int) -> Bool []
     has(ch, P_XID_CONTINUE)
 
 // is_ascii answers whether the codepoint is below 0x80.
-@tier(embedded)
-pub fn is_ascii(ch: Int) -> Bool []
+pub @tier(embedded)
+fn is_ascii(ch: Int) -> Bool []
     ch >= 0 and ch < 0x80
 
 // is_ascii_digit answers `0` to `9` and nothing else.
-@tier(embedded)
-pub fn is_ascii_digit(ch: Int) -> Bool []
+pub @tier(embedded)
+fn is_ascii_digit(ch: Int) -> Bool []
     ch >= '0' and ch <= '9'
 
 // is_ascii_alpha answers `A`-`Z` and `a`-`z` and nothing else.
-@tier(embedded)
-pub fn is_ascii_alpha(ch: Int) -> Bool []
-    (ch >= 'A' and ch <= 'Z') or (ch >= 'a' and ch <= 'z')
+pub @tier(embedded)
+fn is_ascii_alpha(ch: Int) -> Bool []
+    ch >= 'A' and ch <= 'Z' or ch >= 'a' and ch <= 'z'
 
 // is_ascii_whitespace answers space, tab, newline, carriage return
 // and form feed — the HTML and CommonMark definition of ASCII
 // whitespace, and nothing else.
-@tier(embedded)
-pub fn is_ascii_whitespace(ch: Int) -> Bool []
+pub @tier(embedded)
+fn is_ascii_whitespace(ch: Int) -> Bool []
     ch == ' ' or ch == '\t' or ch == '\n' or ch == '\r' or ch == '\f'
 
 // is_valid_scalar answers whether the integer is a Unicode scalar
@@ -424,6 +429,6 @@ pub fn is_ascii_whitespace(ch: Int) -> Bool []
 // built a codepoint out of arithmetic — a numeric character reference
 // in HTML, a `\u` escape in JSON — has to make before treating it as
 // text.
-@tier(embedded)
-pub fn is_valid_scalar(ch: Int) -> Bool []
+pub @tier(embedded)
+fn is_valid_scalar(ch: Int) -> Bool []
     ch >= 0 and ch <= 0x10FFFF and (ch < 0xD800 or ch > 0xDFFF)
