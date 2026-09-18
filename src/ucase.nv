@@ -128,8 +128,7 @@ fn full_of(d: udata.UniData, ch: Int, which: Int) -> [Int]
         if at >= 0
             let off = udata.t_value(d, udata.T_FULL, at + 3 + which * 3, 2)
             let n = udata.t_value(d, udata.T_FULL, at + 3 + which * 3 + 2, 1)
-            let pooled: fn(Int) -> Int = i => udata.t_pool(d, udata.T_FULLPOOL, off + i)
-            out = list.map(list.range(0, n), pooled)
+            out = list.map(list.range(off, off + n), i => udata.t_pool(d, udata.T_FULLPOOL, i))
     if list.is_empty(out)
         list.push(out, simple_of(d, ch, which))
     else

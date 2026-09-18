@@ -76,6 +76,7 @@
 // the caller's bytes.  `unorm`, `ucase` and `uclass.category` never
 // learn which, which is what keeps the three tiers one surface.
 
+use std.bytes
 use std.list
 use std.str
 use udbcase
@@ -425,8 +426,7 @@ fn magic_ok(blob: [u8]) -> Bool
 // The version string a pack declares.
 @tier(app)
 fn pack_version(blob: [u8], vlen: Int) -> Str
-    let byte: fn(Int) -> Str = i => str.from_byte(list.get(blob, PACK_HEADER + i, 0))
-    str.join(list.map(list.range(0, vlen), byte), "")
+    bytes.to_str(bytes.from_byte_list(list.slice(blob, PACK_HEADER, PACK_HEADER + vlen)))
 
 // `n` appended to a buffer as four big-endian bytes.
 @tier(app)

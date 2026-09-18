@@ -23,18 +23,42 @@
 // honest form of that: the claim is for the half that fits, and the
 // README says which half.
 //
-// WHAT THE TIER ACTUALLY CHECKS AT 0.0.1 is narrower than it will be,
-// and saying so is more useful than pretending otherwise: every body
-// under `src/` is a `todo()`, so what links today is the SIGNATURES
-// and the types — an `Int` in and out, a `?UniCluster`, a struct of
-// four Ints.  There is no table in the binary yet, so this probe does
-// not yet prove that 27 KB fits; it proves that nothing in the shape
-// of the surface needs an allocator or a host.  Keeping it green with
-// the tables in is a named cost of the implementation step.
+// AT 0.1.0 THIS PROBE LINKS AND THEN REPORTS FAIL, AND THAT IS A
+// FILED DEFECT RATHER THAN A BUG IN THE PACKAGE.  On the bare-metal
+// runtime `str.len` of a `Str` constant holding a `\x00` answers the
+// number of bytes before the NUL rather than the constant's length,
+// and `str.byte_at_or` bounds-checks against that short length — so a
+// byte table compiled into a constant is unreadable on a device, and
+// every table here opens with the entry for U+0000, whose three key
+// bytes are zero.  Five of the eight checks below pass: they are the
+// five that read no table.  Filed as
+// `runtime/embedded-str-len-truncates-at-a-nul` (class: silent).
+//
+// NOTHING HERE ENCODES AROUND IT.  An alphabet that avoided `\x00`
+// would cost a quarter of the table size and would hide the defect
+// from the next package to meet it.  The claim is stated as blocked
+// instead; the README says the same thing in the same words.
+//
+// WHAT LINKS, AT 0.1.0, IS THE TABLES.  The three modules the probe
+// names read 38 KB of generated table between them — the width
+// classes, the UAX #29 break classes and the predicate bits — and the
+// image carries them, so a green run is the 38 KB fitting and the
+// lookups running with no allocator rather than the signatures merely
+// type-checking.  `tools/alloc_scan.sh` is the other half of the same
+// claim, read off the emitted LLVM on the host.
+//
+// WHAT KEEPS THE REST OUT.  `uclass` reaches `udata` for `category`,
+// and `udata` reaches all three tier-two tables, so the compilation
+// unit HOLDS them; every function that touches them carries
+// `@tier(app)`, nothing in the probe reaches one, and the build drops
+// an out-of-tier function the program cannot call.  That prune is what
+// lets one package be both halves, and it is why `data_full` may
+// allocate a handle while `char_width` may not.
 
-use uwidth
-use ugrapheme
+use std.str
 use uclass
+use ugrapheme
+use uwidth
 
 // Every answer this probe checks, folded into one number so a single
 // comparison decides the run.  A firmware image has one line of
@@ -81,6 +105,8 @@ fn main() [hw, time]
     if n == 8
         hal.uart.write("PASS: unicode-embedded\n")
     else
-        hal.uart.write("FAIL: unicode-embedded\n")
+        hal.uart.write("FAIL: unicode-embedded ")
+        hal.uart.write(str.from_int(n))
+        hal.uart.write("\n")
     loop
         core.rt.sleep_ms(1000)

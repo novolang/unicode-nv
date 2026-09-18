@@ -1,0 +1,106 @@
+// alloc_probe.nv — the program `tools/alloc_scan.sh` compiles to read
+// the emitted LLVM for `novo_alloc`.
+//
+// It is not a test.  It exists to make every function of the
+// classification and width path appear in one module's IR with its own
+// name, and it is built with `--opt=0` for exactly that reason: at the
+// default optimisation level the whole thing inlines into `novo_main`,
+// there is nothing left to attribute an allocation to, and an assertion
+// that no lookup allocates would pass because no lookup is there.
+//
+// WHAT THE CLAIM IS.  `uwidth.char_width` is the `fn(Int) -> Int`
+// textwrap-nv's `WrapWidth` holds, and a terminal calls it once per
+// character of every line it paints; `ugrapheme.break_step` is what a
+// terminal emulator calls once per codepoint the parser hands it;
+// `uclass`'s predicates are a lexer's inner loop.  None of the three
+// may reach the allocator, and the tier annotations say so — this
+// program is what checks that the annotations are true of the code
+// rather than of the author's intention.
+//
+// The answers are printed rather than checked: the five suites own
+// correctness.  This one is here to be read as text.
+
+use std.str
+use uclass
+use ugrapheme
+use uwidth
+
+fn main() [io]
+    // The width rule, its CJK variant, and the property underneath.
+    var cells = 0
+    for cp in [0x41, 0x4E16, 0x0301, 0x00A1, 0xFF21, 0xFF66, 0xD800, 0x110000]
+        cells = cells + uwidth.char_width(cp) + uwidth.char_width_cjk(cp)
+        if uwidth.is_wide(cp)
+            cells = cells + 1
+        if uwidth.is_zero_width(cp)
+            cells = cells + 1
+        if uwidth.is_ambiguous(cp)
+            cells = cells + 1
+        if uwidth.east_asian_width(cp) == EaWide
+            cells = cells + 1
+    println("cells ${cells}")
+
+    // The whole-string measures, which walk without segmenting and
+    // with.
+    let text = "héllo 世界"
+    println("str ${uwidth.str_width(text)} text ${uwidth.text_width(text)} fit ${uwidth.fit_prefix(text, 6)} cluster ${uwidth.cluster_width("世")}")
+
+    // The break machine, fed one codepoint at a time, which is the
+    // shape a terminal emulator uses and the one that must not
+    // allocate.
+    var st = ugrapheme.break_state()
+    var breaks = 0
+    for cp in [0x1F468, 0x200D, 0x1F469, 0x0061, 0x0308, 0x1F1E6, 0x1F1E7]
+        let step = ugrapheme.break_step(st, cp)
+        if step.boundary
+            breaks = breaks + 1
+        st = step.state
+    println("breaks ${breaks} regional ${st.regional_run} linker ${st.linker_run}")
+
+    // The boundary questions a cursor, a backspace and a truncation
+    // ask, all of which are written on that machine.
+    println("next ${ugrapheme.next_boundary(text, 0)} prev ${ugrapheme.prev_boundary(text, 6)} count ${ugrapheme.count(text)} cut ${ugrapheme.truncate_clusters(text, 3)} at ${ugrapheme.is_boundary(text, 1)} done ${ugrapheme.cursor_done(ugrapheme.cursor(text))}")
+
+    // The predicates a lexer's inner loop asks, none of which takes a
+    // data handle.
+    var flags = 0
+    for cp in [0x41, 0x30, 0x0966, 0x03B1, 0x005F, 0x2028, 0x0009, 0x002E, 0x002B, 0x0301]
+        if uclass.is_letter(cp)
+            flags = flags + 1
+        if uclass.is_digit(cp)
+            flags = flags + 1
+        if uclass.is_alphanumeric(cp)
+            flags = flags + 1
+        if uclass.is_whitespace(cp)
+            flags = flags + 1
+        if uclass.is_control(cp)
+            flags = flags + 1
+        if uclass.is_mark(cp)
+            flags = flags + 1
+        if uclass.is_punctuation(cp)
+            flags = flags + 1
+        if uclass.is_symbol(cp)
+            flags = flags + 1
+        if uclass.is_uppercase(cp)
+            flags = flags + 1
+        if uclass.is_lowercase(cp)
+            flags = flags + 1
+        if uclass.is_id_start(cp)
+            flags = flags + 1
+        if uclass.is_id_continue(cp)
+            flags = flags + 1
+        if uclass.is_xid_start(cp)
+            flags = flags + 1
+        if uclass.is_xid_continue(cp)
+            flags = flags + 1
+        if uclass.is_ascii(cp)
+            flags = flags + 1
+        if uclass.is_ascii_digit(cp)
+            flags = flags + 1
+        if uclass.is_ascii_alpha(cp)
+            flags = flags + 1
+        if uclass.is_ascii_whitespace(cp)
+            flags = flags + 1
+        if uclass.is_valid_scalar(cp)
+            flags = flags + 1
+    println("flags ${flags}")

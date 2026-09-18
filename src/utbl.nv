@@ -30,6 +30,7 @@
 // however many bytes the entry has left, also big-endian, and each
 // table's entry size is a constant beside it.
 
+use std.bytes
 use std.list
 use std.str
 
@@ -286,22 +287,24 @@ fn pfind_pair(t: [u8], base: Int, n: Int, esz: Int, a: Int, b: Int) -> Int
 // The bridge between the two spellings of "some bytes" this package
 // meets: a `Str` for the tables and the caller's text, a `[u8]` for the
 // buffers `normalize_into`, `fold_into` and `pack_bytes` append to.
+// `bytes.from_str` is a re-tag rather than a copy, so this is one
+// allocation for the list and nothing else.
 @tier(app)
 fn bytes_of(s: Str) -> [u8]
-    // The lambda is BOUND WITH ITS TYPE rather than written inline:
-    // the device build type-checks strictly and cannot infer a
-    // `list.map` callable's parameter from the list it is handed
-    // (E2000, "strict-types boundary lambda consumed").
-    let at: fn(Int) -> Int = i => str.byte_at_or(s, i, 0)
-    list.map(list.range(0, str.len(s)), at)
+    bytes.to_byte_list(bytes.from_str(s))
+
+// One codepoint's UTF-8 encoding.
+//
+// A NAMED function rather than a lambda at the `list.map` call site,
+// and the reason is measured: a local holding a lambda with a written
+// type leaks one object per element there (filed, see the CHANGELOG),
+// while an inline lambda is what the device build cannot infer.  A
+// top-level function is neither.
+@tier(app)
+fn char_of(c: Int) -> Str
+    str.from_char(c)
 
 // The UTF-8 bytes of a list of codepoints.
-//
-// Through `str_of` rather than a `list.flat_map` over the codepoints:
-// the higher-order lowering guards on the callable's SHAPE and does not
-// match a local holding a typed lambda (E6001), while the device build
-// will not infer an untyped one.  Encoding once into a `Str` and taking
-// its bytes needs neither.
 @tier(app)
 fn utf8_of(cps: [Int]) -> [u8]
     bytes_of(str_of(cps))
@@ -309,5 +312,4 @@ fn utf8_of(cps: [Int]) -> [u8]
 // A list of codepoints as a string.
 @tier(app)
 fn str_of(cps: [Int]) -> Str
-    let enc: fn(Int) -> Str = c => str.from_char(c)
-    str.join(list.map(cps, enc), "")
+    str.join(list.map(cps, char_of), "")

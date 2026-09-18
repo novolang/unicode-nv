@@ -228,21 +228,24 @@ fn safe_starter(d: udata.UniData, text: Str, at: Int, form: UniForm) -> Bool
     let ch = utbl.cp_at(text, at)
     combining_class(d, ch) == 0 and qc_of(d, ch, form) == QC_Y
 
-// The normalised codepoints of the starter-run of `text` that begins at
-// byte `at`, and where that run ends.
+// Where the chunk of `text` that begins at byte `at` ends.
 //
-// The unit `compare` works in: a run is one starter and the non-starters
-// that follow it, which is the largest span normalisation can reorder
-// or recombine.  Comparing run by run is what lets a difference in the
-// first word stop the walk, where normalising both sides would have
-// built two whole strings to throw away.
-fn run_end(d: udata.UniData, text: Str, at: Int) -> Int
+// The unit `compare` works in, and the boundary has to be a SAFE
+// starter rather than merely a starter: normalisation reaches across an
+// ordinary one.  Three Hangul jamo are three starters and NFC composes
+// all three into one syllable, so a walk that cut between them would
+// compare `1111` against `D4DB` and call two spellings of the same
+// syllable different.  A safe starter — combining class zero AND
+// quick-check Yes for the form — is the position at which normalising a
+// prefix and normalising the whole give the same answer, which is the
+// property `stream_boundary` publishes.
+fn chunk_end(d: udata.UniData, text: Str, at: Int, form: UniForm) -> Int
     let n = str.len(text)
     var i = at + utbl.seq_len(text, at)
     for _ in 0..n
         if i >= n
             break
-        if combining_class(d, utbl.cp_at(text, i)) == 0
+        if safe_starter(d, text, i, form)
             break
         i = i + utbl.seq_len(text, i)
     i
@@ -377,7 +380,7 @@ pub fn compare(d: udata.UniData, a: Str, b: Str, form: UniForm) -> Int []
     if quick_check(d, a, form) == QcYes and quick_check(d, b, form) == QcYes
         compare_cps_of(a, b)
     else
-        compare_runs(d, a, b, form)
+        compare_chunks(d, a, b, form)
 
 // equivalent is `compare(...) == 0`, named for the question it
 // answers.
@@ -497,53 +500,49 @@ fn compare_cps_of(a: Str, b: Str) -> Int
     else
         1
 
-// Two lists of codepoints compared element by element.
-fn compare_cps(x: [Int], y: [Int]) -> Int
-    var answer = 0
-    let n = list.len(x)
-    let m = list.len(y)
-    var k = 0
-    for _ in 0..n
-        if k >= n or k >= m
-            break
-        let a = list.get(x, k, 0)
-        let b = list.get(y, k, 0)
-        if a != b
-            answer = a - b
-            break
-        k = k + 1
-    if answer != 0
-        answer
-    else
-        n - m
-
-// Two strings compared one starter-run at a time.
+// Two strings compared one chunk at a time.
 //
-// The slow half of `compare`.  Each side's next run is normalised on
-// its own and the two are compared; the walk stops at the first run
-// that differs, so neither normalised string is ever built whole.
-fn compare_runs(d: udata.UniData, a: Str, b: Str, form: UniForm) -> Int
-    var i = 0
-    var j = 0
+// The slow half of `compare`.  Each side's next chunk is normalised on
+// its own and the two are compared CODEPOINT BY CODEPOINT rather than
+// chunk against chunk, because a chunk on one side need not produce as
+// many codepoints as the chunk it lines up with: one syllable on the
+// left is three jamo on the right.  The walk stops at the first
+// codepoint that differs, so neither normalised string is ever built
+// whole.
+fn compare_chunks(d: udata.UniData, a: Str, b: Str, form: UniForm) -> Int
+    var ai = 0
+    var bi = 0
+    var abuf: [Int] = []
+    var bbuf: [Int] = []
+    var ap = 0
+    var bp = 0
     var answer = 0
-    for _ in 0..str.len(a) + str.len(b) + 1
-        if i >= str.len(a) or j >= str.len(b)
+    for _ in 0..str.len(a) + str.len(b) + 2
+        if ap >= list.len(abuf) and ai < str.len(a)
+            let e = chunk_end(d, a, ai, form)
+            abuf = normalized_cps(d, str.slice(a, ai, e), form)
+            ap = 0
+            ai = e
+        if bp >= list.len(bbuf) and bi < str.len(b)
+            let e = chunk_end(d, b, bi, form)
+            bbuf = normalized_cps(d, str.slice(b, bi, e), form)
+            bp = 0
+            bi = e
+        let adone = ap >= list.len(abuf) and ai >= str.len(a)
+        let bdone = bp >= list.len(bbuf) and bi >= str.len(b)
+        if adone and bdone
             break
-        let ai = run_end(d, a, i)
-        let bj = run_end(d, b, j)
-        let x = normalized_cps(d, str.slice(a, i, ai), form)
-        let y = normalized_cps(d, str.slice(b, j, bj), form)
-        let c = compare_cps(x, y)
-        if c != 0
-            answer = c
+        if adone
+            answer = 0 - 1
             break
-        i = ai
-        j = bj
-    if answer != 0
-        answer
-    elif i >= str.len(a) and j >= str.len(b)
-        0
-    elif i >= str.len(a)
-        0 - 1
-    else
-        1
+        if bdone
+            answer = 1
+            break
+        let x = list.get(abuf, ap, 0)
+        let y = list.get(bbuf, bp, 0)
+        if x != y
+            answer = x - y
+            break
+        ap = ap + 1
+        bp = bp + 1
+    answer
