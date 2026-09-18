@@ -1,9 +1,12 @@
 // ucase.nv — case mapping under the full Unicode rules, not the ASCII
 // ones.
-//
-// Every body here is a `todo()`; the signatures are the design.
 
+use std.list
+use std.str
 use udata
+use ugrapheme
+use unorm
+use utbl
 
 // THE THREE THINGS ASCII CASE MAPPING GETS WRONG, and they are the
 // reason this module exists rather than `str.upper` being enough:
@@ -36,6 +39,338 @@ use udata
 //
 // EVERY FUNCTION TAKES A `UniData`: the mapping tables are about
 // 55 KB generated.  `udata.nv` argues why.
+//
+// THE LANGUAGE RULES ARE CONTEXT, NOT A TABLE.  `SpecialCasing.txt`
+// writes them as conditions — Final_Sigma, After_I, Not_Before_Dot,
+// More_Above, After_Soft_Dotted — and every one of them is a question
+// about the characters AROUND the one being mapped.  So the tables
+// carry the unconditional mappings and the four properties the
+// conditions are written over, and the conditions themselves are the
+// predicates below.
+
+// The lowercase slot of an entry in `udbcase.SIMPLE` and `udbcase.FULL`.
+const M_LOWER = 0
+
+// The uppercase slot.
+const M_UPPER = 1
+
+// The titlecase slot.
+const M_TITLE = 2
+
+// The case-folding slot.
+const M_FOLD = 3
+
+// The Cased bit of `udbcase.CASEP`.
+const C_CASED = 1
+
+// The Changes_When_Casefolded bit.
+const C_CHANGES_FOLDED = 2
+
+// The Case_Ignorable bit, which every condition skips over.
+const C_IGNORABLE = 4
+
+// The Soft_Dotted bit, which the Lithuanian uppercase rule reads.
+const C_SOFT_DOTTED = 8
+
+// U+0307 COMBINING DOT ABOVE, which three of the five conditions are
+// about.
+const DOT_ABOVE = 0x0307
+
+// U+0130 LATIN CAPITAL LETTER I WITH DOT ABOVE.
+const I_DOTTED = 0x0130
+
+// U+0131 LATIN SMALL LETTER DOTLESS I.
+const I_DOTLESS = 0x0131
+
+// U+03A3 GREEK CAPITAL LETTER SIGMA, the one codepoint whose lowercase
+// depends on where in the word it stands.
+const SIGMA = 0x03A3
+
+// U+03C2 GREEK SMALL LETTER FINAL SIGMA.
+const SIGMA_FINAL = 0x03C2
+
+// U+03C3 GREEK SMALL LETTER SIGMA.
+const SIGMA_MEDIAL = 0x03C3
+
+// The combining class "above", which More_Above and After_I test for.
+const CCC_ABOVE = 230
+
+// The case-property bits of `ch`.
+fn case_flags(d: udata.UniData, ch: Int) -> Int
+    if udata.data_covers(d, ch) == false
+        0
+    else
+        udata.t_cover(d, udata.T_CASEP, ch)
+
+// The one-codepoint mapping in slot `which`, or `ch` when there is none.
+fn simple_of(d: udata.UniData, ch: Int, which: Int) -> Int
+    if udata.data_covers(d, ch) == false
+        ch
+    else
+        let at = udata.t_find(d, udata.T_SIMPLE, ch)
+        if at < 0
+            ch
+        else
+            let v = udata.t_value(d, udata.T_SIMPLE, at + 3 + which * 3, 3)
+            if v == 0
+                ch
+            else
+                v
+
+// The full mapping in slot `which`, which may be several codepoints.
+//
+// The simple mapping as a one-element list when the full tables have
+// nothing to say, so a caller writes one loop rather than two paths.
+fn full_of(d: udata.UniData, ch: Int, which: Int) -> [Int]
+    var out: [Int] = []
+    if udata.data_covers(d, ch)
+        let at = udata.t_find(d, udata.T_FULL, ch)
+        if at >= 0
+            let off = udata.t_value(d, udata.T_FULL, at + 3 + which * 3, 2)
+            let n = udata.t_value(d, udata.T_FULL, at + 3 + which * 3 + 2, 1)
+            for i in 0..n
+                out = list.push(out, udata.t_pool(d, udata.T_FULLPOOL, off + i))
+    if list.is_empty(out)
+        list.push(out, simple_of(d, ch, which))
+    else
+        out
+
+// Whether `language` is one of the two that share the Turkish rules.
+//
+// `SpecialCasing.txt` writes `tr` and `az` as separate conditions with
+// identical mappings, and a caller that passed `tr-TR` means the same
+// thing, so the tag is matched on its first two letters.
+fn is_turkic(language: Str) -> Bool
+    str.starts_with(language, LANG_TURKISH) or str.starts_with(language, LANG_AZERI)
+
+// Whether `language` is Lithuanian.
+fn is_lithuanian(language: Str) -> Bool
+    str.starts_with(language, LANG_LITHUANIAN)
+
+// The byte offset of the next codepoint after `at` that the conditions
+// do not skip, or the length of the text.
+//
+// Every condition in `SpecialCasing.txt` is written "ignoring
+// Case_Ignorable characters", so this is that phrase written once.
+fn skip_ignorable_forward(d: udata.UniData, text: Str, at: Int) -> Int
+    var i = at
+    for _ in 0..str.len(text)
+        if i >= str.len(text)
+            break
+        if (case_flags(d, utbl.cp_at(text, i)) & C_IGNORABLE) == 0
+            break
+        i = i + utbl.seq_len(text, i)
+    i
+
+// The codepoint before `at` that the conditions do not skip, or -1.
+fn cased_before(d: udata.UniData, text: Str, at: Int) -> Int
+    var i = at
+    var answer = 0 - 1
+    for _ in 0..str.len(text)
+        if i <= 0
+            break
+        i = utbl.cp_start(text, i - 1)
+        let ch = utbl.cp_at(text, i)
+        if (case_flags(d, ch) & C_IGNORABLE) == 0
+            answer = ch
+            break
+    answer
+
+// Final_Sigma: a cased letter before, and none after.
+//
+// The condition a per-codepoint mapping cannot see, and the second
+// reason the string functions exist alongside the codepoint ones.
+fn final_sigma(d: udata.UniData, text: Str, at: Int, after: Int) -> Bool
+    let before = cased_before(d, text, at)
+    if before < 0 or (case_flags(d, before) & C_CASED) == 0
+        false
+    else
+        let j = skip_ignorable_forward(d, text, after)
+        j >= str.len(text) or (case_flags(d, utbl.cp_at(text, j)) & C_CASED) == 0
+
+// More_Above: a combining mark above follows, with nothing of class 0
+// or 230 in between.
+fn more_above(d: udata.UniData, text: Str, after: Int) -> Bool
+    var i = after
+    var answer = false
+    for _ in 0..str.len(text)
+        if i >= str.len(text)
+            break
+        let cc = unorm.combining_class(d, utbl.cp_at(text, i))
+        if cc == CCC_ABOVE
+            answer = true
+            break
+        if cc == 0
+            break
+        i = i + utbl.seq_len(text, i)
+    answer
+
+// After_I: an uppercase I stands before, with nothing of class 0 or 230
+// in between.
+fn after_i(d: udata.UniData, text: Str, at: Int) -> Bool
+    var i = at
+    var answer = false
+    for _ in 0..str.len(text)
+        if i <= 0
+            break
+        i = utbl.cp_start(text, i - 1)
+        let ch = utbl.cp_at(text, i)
+        if ch == 0x0049
+            answer = true
+            break
+        let cc = unorm.combining_class(d, ch)
+        if cc == 0 or cc == CCC_ABOVE
+            break
+    answer
+
+// After_Soft_Dotted: a Soft_Dotted letter stands before, with nothing of
+// class 0 or 230 in between.
+fn after_soft_dotted(d: udata.UniData, text: Str, at: Int) -> Bool
+    var i = at
+    var answer = false
+    for _ in 0..str.len(text)
+        if i <= 0
+            break
+        i = utbl.cp_start(text, i - 1)
+        let ch = utbl.cp_at(text, i)
+        if (case_flags(d, ch) & C_SOFT_DOTTED) != 0
+            answer = true
+            break
+        let cc = unorm.combining_class(d, ch)
+        if cc == 0 or cc == CCC_ABOVE
+            break
+    answer
+
+// Not_Before_Dot: no COMBINING DOT ABOVE follows, with nothing of class
+// 0 or 230 in between.
+fn not_before_dot(d: udata.UniData, text: Str, after: Int) -> Bool
+    var i = after
+    var answer = true
+    for _ in 0..str.len(text)
+        if i >= str.len(text)
+            break
+        let ch = utbl.cp_at(text, i)
+        if ch == DOT_ABOVE
+            answer = false
+            break
+        let cc = unorm.combining_class(d, ch)
+        if cc == 0 or cc == CCC_ABOVE
+            break
+        i = i + utbl.seq_len(text, i)
+    answer
+
+// The codepoints one character lowercases to, in context.
+//
+// The conditional half of `SpecialCasing.txt`, in the order the file
+// writes the conditions: the Turkish rules, then the Lithuanian ones,
+// then the final sigma, then the unconditional table.
+fn lower_in_context(d: udata.UniData, text: Str, at: Int, after: Int, language: Str) -> [Int]
+    let ch = utbl.cp_at(text, at)
+    var out: [Int] = []
+    if is_turkic(language) and ch == I_DOTTED
+        out = list.push(out, 0x0069)
+    elif is_turkic(language) and ch == DOT_ABOVE and after_i(d, text, at)
+        out = out
+    elif is_turkic(language) and ch == 0x0049 and not_before_dot(d, text, after)
+        out = list.push(out, I_DOTLESS)
+    elif is_lithuanian(language) and ch == 0x0049 and more_above(d, text, after)
+        out = list.push(list.push(out, 0x0069), DOT_ABOVE)
+    elif is_lithuanian(language) and ch == 0x004A and more_above(d, text, after)
+        out = list.push(list.push(out, 0x006A), DOT_ABOVE)
+    elif is_lithuanian(language) and ch == 0x012E and more_above(d, text, after)
+        out = list.push(list.push(out, 0x012F), DOT_ABOVE)
+    elif ch == SIGMA
+        if final_sigma(d, text, at, after)
+            out = list.push(out, SIGMA_FINAL)
+        else
+            out = list.push(out, SIGMA_MEDIAL)
+    else
+        out = full_of(d, ch, M_LOWER)
+    out
+
+// The codepoints one character uppercases to, in context.
+fn upper_in_context(d: udata.UniData, text: Str, at: Int, language: Str) -> [Int]
+    let ch = utbl.cp_at(text, at)
+    var out: [Int] = []
+    if is_turkic(language) and ch == 0x0069
+        out = list.push(out, I_DOTTED)
+    elif is_lithuanian(language) and ch == DOT_ABOVE and after_soft_dotted(d, text, at)
+        out = out
+    else
+        out = full_of(d, ch, M_UPPER)
+    out
+
+// The codepoints `ch` folds to.
+fn fold_cp(d: udata.UniData, ch: Int) -> [Int]
+    full_of(d, ch, M_FOLD)
+
+// The codepoints of a list written into `out` as UTF-8.
+fn emit_utf8(out: [u8], cps: [Int]) -> [u8]
+    var o = out
+    for i in 0..list.len(cps)
+        let piece = str.from_char(list.get(cps, i, 0))
+        for j in 0..str.len(piece)
+            o = list.push(o, str.byte_at_or(piece, j, 0))
+    o
+
+// A list of codepoints as a string.
+fn to_str(cps: [Int]) -> Str
+    let sb = str.builder_new()
+    for i in 0..list.len(cps)
+        str.builder_append(sb, str.from_char(list.get(cps, i, 0)))
+    let out = str.builder_to_str(sb)
+    str.builder_drop(sb)
+    out
+
+// Every codepoint of `text` mapped by `which`, in context.
+//
+// `which` is M_LOWER, M_UPPER or M_FOLD; titlecasing is not here
+// because it is a question about words rather than about codepoints.
+fn map_text(d: udata.UniData, text: Str, which: Int, language: Str) -> [Int]
+    var out: [Int] = []
+    var at = 0
+    for _ in 0..str.len(text)
+        if at >= str.len(text)
+            break
+        let after = at + utbl.seq_len(text, at)
+        var piece: [Int] = []
+        if which == M_LOWER
+            piece = lower_in_context(d, text, at, after, language)
+        elif which == M_UPPER
+            piece = upper_in_context(d, text, at, language)
+        else
+            piece = fold_cp(d, utbl.cp_at(text, at))
+        for i in 0..list.len(piece)
+            out = list.push(out, list.get(piece, i, 0))
+        at = after
+    out
+
+// One word-boundary segment titlecased: its first cased letter in the
+// titlecase form, everything after it lowercased.
+fn title_segment(d: udata.UniData, text: Str, start: Int, end: Int, language: Str) -> [Int]
+    var out: [Int] = []
+    var at = start
+    var seen = false
+    for _ in 0..(end - start)
+        if at >= end
+            break
+        let after = at + utbl.seq_len(text, at)
+        let ch = utbl.cp_at(text, at)
+        var piece: [Int] = []
+        if seen == false and (case_flags(d, ch) & C_CASED) != 0
+            seen = true
+            if is_turkic(language) and ch == 0x0069
+                piece = list.push(piece, I_DOTTED)
+            else
+                piece = full_of(d, ch, M_TITLE)
+        elif seen
+            piece = lower_in_context(d, text, at, after, language)
+        else
+            piece = list.push(piece, ch)
+        for i in 0..list.len(piece)
+            out = list.push(out, list.get(piece, i, 0))
+        at = after
+    out
 
 // The language tag meaning "no language-specific rules" — the default
 // mapping, which is what a program with no locale should use.
@@ -71,14 +406,14 @@ pub const LANG_LITHUANIAN = "lt"
 //     println(ucase.to_lower(d, "STRASSE", LANG_ROOT))
 // ```
 pub fn to_lower(d: udata.UniData, text: Str, language: Str) -> Str []
-    todo("unicode-nv.ucase.to_lower")
+    to_str(map_text(d, text, M_LOWER, language))
 
 // to_upper is the string uppercased, under the full rules.
 //
 // May be LONGER than its input: "ß" becomes "SS", "ﬁ" becomes "FI",
 // and a Greek letter with a ypogegrammeni becomes two codepoints.
 pub fn to_upper(d: udata.UniData, text: Str, language: Str) -> Str []
-    todo("unicode-nv.ucase.to_upper")
+    to_str(map_text(d, text, M_UPPER, language))
 
 // to_title is the string title-cased: the first cased letter of each
 // word in its titlecase form, the rest lowercased.
@@ -91,7 +426,14 @@ pub fn to_upper(d: udata.UniData, text: Str, language: Str) -> Str []
 // Titlecase is a third form, not uppercase: the digraph "ǳ"
 // titlecases to "ǲ" and uppercases to "Ǳ".
 pub fn to_title(d: udata.UniData, text: Str, language: Str) -> Str []
-    todo("unicode-nv.ucase.to_title")
+    var out: [Int] = []
+    let segments = ugrapheme.words(text)
+    for i in 0..list.len(segments)
+        let w = list.get(segments, i)
+        let piece = title_segment(d, text, w.start, w.end, language)
+        for j in 0..list.len(piece)
+            out = list.push(out, list.get(piece, j, 0))
+    to_str(out)
 
 // fold is the string case-folded, for caseless comparison.
 //
@@ -106,7 +448,7 @@ pub fn to_title(d: udata.UniData, text: Str, language: Str) -> Str []
 // genuinely needs the Turkic fold uses `simple_fold` per codepoint and
 // applies its own rule; the README says so.
 pub fn fold(d: udata.UniData, text: Str) -> Str []
-    todo("unicode-nv.ucase.fold")
+    to_str(map_text(d, text, M_FOLD, LANG_ROOT))
 
 // eq_fold is a caseless comparison that allocates nothing.
 //
@@ -114,19 +456,45 @@ pub fn fold(d: udata.UniData, text: Str) -> Str []
 // which is what a lookup table or a header-name comparison wants,
 // where folding both strings to throw them away is the whole cost.
 pub fn eq_fold(d: udata.UniData, a: Str, b: Str) -> Bool []
-    todo("unicode-nv.ucase.eq_fold")
+    var ai = 0
+    var bi = 0
+    var abuf: [Int] = []
+    var bbuf: [Int] = []
+    var ap = 0
+    var bp = 0
+    var same = true
+    for _ in 0..(str.len(a) + str.len(b) + 2)
+        if ap >= list.len(abuf) and ai < str.len(a)
+            abuf = fold_cp(d, utbl.cp_at(a, ai))
+            ap = 0
+            ai = ai + utbl.seq_len(a, ai)
+        if bp >= list.len(bbuf) and bi < str.len(b)
+            bbuf = fold_cp(d, utbl.cp_at(b, bi))
+            bp = 0
+            bi = bi + utbl.seq_len(b, bi)
+        let adone = ap >= list.len(abuf) and ai >= str.len(a)
+        let bdone = bp >= list.len(bbuf) and bi >= str.len(b)
+        if adone or bdone
+            same = adone and bdone
+            break
+        if list.get(abuf, ap, 0) != list.get(bbuf, bp, 0)
+            same = false
+            break
+        ap = ap + 1
+        bp = bp + 1
+    same
 
 // to_lower_into appends the lowercased text to a caller's buffer.
 pub fn to_lower_into(out: [u8], d: udata.UniData, text: Str, language: Str) -> [u8] []
-    todo("unicode-nv.ucase.to_lower_into")
+    emit_utf8(out, map_text(d, text, M_LOWER, language))
 
 // to_upper_into appends the uppercased text to a caller's buffer.
 pub fn to_upper_into(out: [u8], d: udata.UniData, text: Str, language: Str) -> [u8] []
-    todo("unicode-nv.ucase.to_upper_into")
+    emit_utf8(out, map_text(d, text, M_UPPER, language))
 
 // fold_into appends the case-folded text to a caller's buffer.
 pub fn fold_into(out: [u8], d: udata.UniData, text: Str) -> [u8] []
-    todo("unicode-nv.ucase.fold_into")
+    emit_utf8(out, map_text(d, text, M_FOLD, LANG_ROOT))
 
 // simple_lower is the one-codepoint lowercase mapping.
 //
@@ -134,27 +502,32 @@ pub fn fold_into(out: [u8], d: udata.UniData, text: Str) -> [u8] []
 // is the mapping that is wrong for the cases above, and a reader of a
 // call site should see which one was chosen.
 pub fn simple_lower(d: udata.UniData, ch: Int) -> Int []
-    todo("unicode-nv.ucase.simple_lower")
+    simple_of(d, ch, M_LOWER)
 
 // simple_upper is the one-codepoint uppercase mapping.
 pub fn simple_upper(d: udata.UniData, ch: Int) -> Int []
-    todo("unicode-nv.ucase.simple_upper")
+    simple_of(d, ch, M_UPPER)
 
 // simple_title is the one-codepoint titlecase mapping.
 pub fn simple_title(d: udata.UniData, ch: Int) -> Int []
-    todo("unicode-nv.ucase.simple_title")
+    simple_of(d, ch, M_TITLE)
 
 // simple_fold is the one-codepoint case folding.
 //
 // The building block for a caller writing its own folding rule — the
 // Turkic variant, or a fold restricted to a script.
 pub fn simple_fold(d: udata.UniData, ch: Int) -> Int []
-    todo("unicode-nv.ucase.simple_fold")
+    simple_of(d, ch, M_FOLD)
 
 // full_lower is a codepoint's full lowercase mapping, which may be
 // several codepoints.
 pub fn full_lower(d: udata.UniData, ch: Int, language: Str) -> [Int] []
-    todo("unicode-nv.ucase.full_lower")
+    if is_turkic(language) and ch == I_DOTTED
+        [0x0069]
+    elif is_turkic(language) and ch == 0x0049
+        [I_DOTLESS]
+    else
+        full_of(d, ch, M_LOWER)
 
 // full_upper is a codepoint's full uppercase mapping.
 //
@@ -162,7 +535,10 @@ pub fn full_lower(d: udata.UniData, ch: Int, language: Str) -> [Int] []
 // forms.  A one-element list when the mapping is one-to-one, so the
 // caller writes one loop rather than two paths.
 pub fn full_upper(d: udata.UniData, ch: Int, language: Str) -> [Int] []
-    todo("unicode-nv.ucase.full_upper")
+    if is_turkic(language) and ch == 0x0069
+        [I_DOTTED]
+    else
+        full_of(d, ch, M_UPPER)
 
 // is_cased answers whether the codepoint has case at all.
 //
@@ -172,7 +548,7 @@ pub fn full_upper(d: udata.UniData, ch: Int, language: Str) -> [Int] []
 // asks before deciding a string "has no uppercase form" rather than
 // "is already uppercase".
 pub fn is_cased(d: udata.UniData, ch: Int) -> Bool []
-    todo("unicode-nv.ucase.is_cased")
+    (case_flags(d, ch) & C_CASED) != 0
 
 // changes_when_folded answers whether folding would change the
 // codepoint.
@@ -180,4 +556,4 @@ pub fn is_cased(d: udata.UniData, ch: Int) -> Bool []
 // The one-codepoint form of the check that lets `eq_fold` skip a
 // string it does not need to fold at all.
 pub fn changes_when_folded(d: udata.UniData, ch: Int) -> Bool []
-    todo("unicode-nv.ucase.changes_when_folded")
+    (case_flags(d, ch) & C_CHANGES_FOLDED) != 0

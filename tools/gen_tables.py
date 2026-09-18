@@ -621,8 +621,9 @@ zero meaning the simple mapping is the whole answer.
     cased = read_prop_set(dcp, "Cased")
     cwcf = read_prop_set(dcp, "Changes_When_Casefolded")
     ignorable = read_prop_set(dcp, "Case_Ignorable")
+    dotted = read_prop_set(os.path.join(ucd, "PropList.txt"), "Soft_Dotted")
     flags = {}
-    for cp in cased | cwcf | ignorable:
+    for cp in cased | cwcf | ignorable | dotted:
         v = 0
         if cp in cased:
             v |= 1
@@ -630,15 +631,19 @@ zero meaning the simple mapping is the whole answer.
             v |= 2
         if cp in ignorable:
             v |= 4
+        if cp in dotted:
+            v |= 8
         flags[cp] = v
     data, n = covering(flags, 0, 1)
     m.table(
         "CASEP", data, 4,
         """
-Cased, Changes_When_Casefolded and Case_Ignorable, covering, one bit
-each.  The third is not published as a function: it is what the
-final-sigma rule and the titlecasing rule are written over, and both
-of those are in `ucase`.
+Cased, Changes_When_Casefolded, Case_Ignorable and Soft_Dotted,
+covering, one bit each.  The last two are not published as functions:
+they are what SpecialCasing.txt's conditions are written over —
+Final_Sigma and After_I skip the case-ignorable characters, and
+After_Soft_Dotted is the whole of the Lithuanian uppercase rule — and
+those conditions live in `ucase`.
 """,
     )
     return m
