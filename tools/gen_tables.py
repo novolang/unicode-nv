@@ -221,20 +221,50 @@ class Module:
         self.lines += ["// " + l if l else "//" for l in note.strip().split("\n")]
         self.lines.append("")
         self.sizes = []
+        self.total = 0
+        self.bmp = 0
 
-    def table(self, name, data, esz, comment):
+    def table(self, name, data, esz, comment, keyed=True):
         for l in comment.strip().split("\n"):
             self.lines.append("// " + l if l else "//")
         self.lines.append("const %s_ESZ = %d" % (name, esz))
         self.lines.append("const %s = %s" % (name, literal(data)))
         self.lines.append("")
         self.sizes.append((name, len(data), len(data) // esz))
+        self.total += len(data)
+        if keyed:
+            at = 0
+            while at + esz <= len(data):
+                if int.from_bytes(data[at:at + 3], "big") > 0xFFFF:
+                    break
+                at += esz
+            self.bmp += at
+        else:
+            self.bmp += len(data)
 
     def number(self, name, value, comment):
         for l in comment.strip().split("\n"):
             self.lines.append("// " + l if l else "//")
         self.lines.append("const %s = %d" % (name, value))
         self.lines.append("")
+
+    def totals(self):
+        """The two numbers `udata.table_bytes` answers with."""
+        self.number(
+            "BYTES", self.total,
+            """
+How many bytes of table this module holds.  `udata` sums these to
+answer `UniData.table_bytes`, so the number a caller sizing a firmware
+image reads is generated from the tables rather than typed.
+""",
+        )
+        self.number(
+            "BMP_BYTES", self.bmp,
+            """
+How much of that covers the Basic Multilingual Plane — the share a
+`udata.data_compact()` handle can speak for.
+""",
+        )
 
     def write(self, src):
         with open(os.path.join(src, self.name + ".nv"), "w", encoding="utf-8") as fh:
@@ -455,20 +485,6 @@ index of `uclass.UniCategory`, so the lookup is one `match` and no
 second table.
 """,
     )
-    bmp = 0
-    while bmp + 4 <= len(data):
-        key = int.from_bytes(data[bmp:bmp + 3], "big")
-        if key > 0xFFFF:
-            break
-        bmp += 4
-    m.number(
-        "CAT_BMP_BYTES", bmp,
-        """
-How much of CAT covers the Basic Multilingual Plane.  `udata`'s
-compact handle reports the tier-two bytes it reaches, and this is its
-share of this table.
-""",
-    )
     return m
 
 
@@ -598,6 +614,7 @@ zero meaning the simple mapping is the whole answer.
     m.table(
         "FULLPOOL", bytes(pool), 3,
         "The codepoints FULL indexes into, three bytes each.",
+        keyed=False,
     )
 
     dcp = os.path.join(ucd, "DerivedCoreProperties.txt")
@@ -695,6 +712,7 @@ the closure would repeat every shared tail.
     m.table(
         "DECOMPPOOL", bytes(pool), 3,
         "The codepoints DECOMP indexes into, three bytes each.",
+        keyed=False,
     )
 
     exclusions = set()
@@ -773,10 +791,10 @@ def main():
 
     rows = read_unicode_data(os.path.join(ucd, "UnicodeData.txt"))
     total = 0
-    total += gen_core(ucd, rows).write(src)
-    total += gen_cat(rows).write(src)
-    total += gen_case(ucd, rows).write(src)
-    total += gen_norm(ucd, rows).write(src)
+    for m in [gen_core(ucd, rows), gen_cat(rows),
+              gen_case(ucd, rows), gen_norm(ucd, rows)]:
+        m.totals()
+        total += m.write(src)
     print("%-10s %7d bytes of table in total" % ("", total))
     return 0
 

@@ -1,8 +1,9 @@
 // unorm.nv — the four normalisation forms of UAX #15.
-//
-// Every body here is a `todo()`; the signatures are the design.
 
+use std.list
+use std.str
 use udata
+use utbl
 
 // WHY NORMALISE.  "é" is two different strings: one codepoint, or an
 // "e" followed by a combining acute.  They look identical, they mean
@@ -28,6 +29,240 @@ use udata
 // without materialising either normalised form.  Those two are what
 // a hot path should call; `normalize` is for when the normalised
 // string is what you actually need to keep.
+//
+// HANGUL IS ARITHMETIC, NOT A TABLE.  UAX #15 § 3.12 gives the
+// eleven thousand syllables a formula, and `hangul_decompose` and
+// `compose_pair` use it, so the tables carry none of them.  A caller
+// cannot tell, which is the point.
+
+// U+AC00, the first precomposed Hangul syllable (UAX #15 § 3.12).
+const S_BASE = 0xAC00
+
+// U+1100, the first leading jamo.
+const L_BASE = 0x1100
+
+// U+1161, the first vowel jamo.
+const V_BASE = 0x1161
+
+// U+11A7 — one BELOW the first trailing jamo, because a syllable with
+// no trailing jamo is written as index zero.
+const T_BASE = 0x11A7
+
+// How many leading jamo there are.
+const L_COUNT = 19
+
+// How many vowel jamo there are.
+const V_COUNT = 21
+
+// How many trailing jamo there are, counting "none" as one of them.
+const T_COUNT = 28
+
+// The syllables one leading jamo spans: V_COUNT * T_COUNT.
+const N_COUNT = 588
+
+// How many precomposed syllables there are: L_COUNT * N_COUNT.
+const S_COUNT = 11172
+
+// The quick-check answer a table gives: certainly yes.
+const QC_Y = 0
+
+// Certainly no.
+const QC_N = 1
+
+// Possibly — the answer only NFC and NFKC ever give.
+const QC_M = 2
+
+// Whether `form` composes after decomposing.
+fn composes(form: UniForm) -> Bool
+    match form
+        FormNfc => true
+        FormNfkc => true
+        _ => false
+
+// Whether `form` uses the compatibility decompositions.
+fn compat_form(form: UniForm) -> Bool
+    match form
+        FormNfkd => true
+        FormNfkc => true
+        _ => false
+
+// Which pair of bits in `udbnorm.QC` a form reads.
+fn qc_shift(form: UniForm) -> Int
+    match form
+        FormNfd => 0
+        FormNfc => 2
+        FormNfkd => 4
+        _ => 6
+
+// The quick-check property of `ch` for `form`.
+fn qc_of(d: udata.UniData, ch: Int, form: UniForm) -> Int
+    if udata.data_covers(d, ch) == false
+        QC_Y
+    else
+        (udata.t_cover(d, udata.T_QC, ch) >>> qc_shift(form)) & 0x03
+
+// Whether `ch` is one of the precomposed Hangul syllables.
+fn is_hangul(ch: Int) -> Bool
+    ch >= S_BASE and ch < S_BASE + S_COUNT
+
+// The jamo of a precomposed syllable, appended to `out`.
+fn hangul_decompose(out: [Int], ch: Int) -> [Int]
+    let index = ch - S_BASE
+    var o = list.push(out, L_BASE + index / N_COUNT)
+    o = list.push(o, V_BASE + (index % N_COUNT) / T_COUNT)
+    let t = index % T_COUNT
+    if t != 0
+        o = list.push(o, T_BASE + t)
+    o
+
+// One codepoint's decomposition, appended to `out` and fully expanded.
+//
+// Recursive, because a decomposition's own parts may decompose: the
+// table holds the ONE-STEP mapping, and storing the closure instead
+// would repeat every shared tail in every entry that ends with it.
+fn decomp_into(d: udata.UniData, out: [Int], ch: Int, compat: Bool) -> [Int]
+    if is_hangul(ch)
+        hangul_decompose(out, ch)
+    elif udata.data_covers(d, ch) == false
+        list.push(out, ch)
+    else
+        let at = udata.t_find(d, udata.T_DECOMP, ch)
+        if at < 0
+            list.push(out, ch)
+        else
+            let kind = udata.t_value(d, udata.T_DECOMP, at + 3, 1)
+            if kind == 1 and compat == false
+                list.push(out, ch)
+            else
+                let off = udata.t_value(d, udata.T_DECOMP, at + 4, 2)
+                let n = udata.t_value(d, udata.T_DECOMP, at + 6, 1)
+                var o = out
+                for i in 0..n
+                    o = decomp_into(d, o, udata.t_pool(d, udata.T_DECOMPPOOL, off + i), compat)
+                o
+
+// `ch` appended to `out` in canonical order.
+//
+// An insertion rather than a sort afterwards.  The canonical ordering
+// algorithm (UAX #15 § 3.11) is defined as a stable sort of each run of
+// non-starters by combining class, and inserting each mark just past
+// the last one whose class is no greater IS that sort — written so the
+// list is built once instead of being rewritten per swap.
+fn insert_ordered(d: udata.UniData, out: [Int], ch: Int) -> [Int]
+    let c = combining_class(d, ch)
+    if c == 0
+        list.push(out, ch)
+    else
+        let n = list.len(out)
+        var at = n
+        for _ in 0..n
+            if at == 0
+                break
+            let pc = combining_class(d, list.get(out, at - 1, 0))
+            if pc == 0 or pc <= c
+                break
+            at = at - 1
+        if at == n
+            list.push(out, ch)
+        else
+            list.append(list.push(list.slice(out, 0, at), ch), list.slice(out, at, n))
+
+// The whole string decomposed and canonically ordered.
+fn decomposed(d: udata.UniData, text: Str, compat: Bool) -> [Int]
+    var out: [Int] = []
+    var at = 0
+    for _ in 0..str.len(text)
+        if at >= str.len(text)
+            break
+        var one: [Int] = []
+        one = decomp_into(d, one, utbl.cp_at(text, at), compat)
+        for i in 0..list.len(one)
+            out = insert_ordered(d, out, list.get(one, i, 0))
+        at = at + utbl.seq_len(text, at)
+    out
+
+// The canonical composition of an already-ordered sequence.
+//
+// UAX #15 § 3.11: walk forward holding the index of the last starter,
+// and compose a mark onto it when nothing between them BLOCKS the
+// pair — nothing whose combining class is at or above the mark's.  A
+// mark that composes is absorbed, so `last_cc` deliberately does not
+// move: the character that would block the next mark is still the one
+// before this one.
+fn composed(d: udata.UniData, src: [Int]) -> [Int]
+    var out: [Int] = []
+    var starter = 0 - 1
+    var last_cc = 0
+    for i in 0..list.len(src)
+        let ch = list.get(src, i, 0)
+        let cc = combining_class(d, ch)
+        var absorbed = false
+        if starter >= 0 and (last_cc < cc or last_cc == 0)
+            match compose_pair(d, list.get(out, starter, 0), ch)
+                None => absorbed = false
+                Some(comp) =>
+                    out[starter] = comp
+                    absorbed = true
+        if absorbed == false
+            if cc == 0
+                starter = list.len(out)
+            last_cc = cc
+            out = list.push(out, ch)
+    out
+
+// The normalised codepoints of `text`.
+fn normalized_cps(d: udata.UniData, text: Str, form: UniForm) -> [Int]
+    let parts = decomposed(d, text, compat_form(form))
+    if composes(form)
+        composed(d, parts)
+    else
+        parts
+
+// Whether the codepoint at byte `at` is a safe place to restart.
+//
+// A starter the form leaves alone: nothing before it can reach across
+// it and nothing after it can pull it back, so a chunk that ends before
+// one can be emitted without waiting for what follows.
+fn safe_starter(d: udata.UniData, text: Str, at: Int, form: UniForm) -> Bool
+    let ch = utbl.cp_at(text, at)
+    combining_class(d, ch) == 0 and qc_of(d, ch, form) == QC_Y
+
+// The codepoints of `text` written into `out` as UTF-8.
+fn emit_utf8(out: [u8], cps: [Int]) -> [u8]
+    var o = out
+    for i in 0..list.len(cps)
+        let piece = str.from_char(list.get(cps, i, 0))
+        for j in 0..str.len(piece)
+            o = list.push(o, str.byte_at_or(piece, j, 0))
+    o
+
+// The codepoints as a string.
+fn to_str(cps: [Int]) -> Str
+    let sb = str.builder_new()
+    for i in 0..list.len(cps)
+        str.builder_append(sb, str.from_char(list.get(cps, i, 0)))
+    let out = str.builder_to_str(sb)
+    str.builder_drop(sb)
+    out
+
+// The normalised codepoints of the starter-run of `text` that begins at
+// byte `at`, and where that run ends.
+//
+// The unit `compare` works in: a run is one starter and the non-starters
+// that follow it, which is the largest span normalisation can reorder
+// or recombine.  Comparing run by run is what lets a difference in the
+// first word stop the walk, where normalising both sides would have
+// built two whole strings to throw away.
+fn run_end(d: udata.UniData, text: Str, at: Int) -> Int
+    let n = str.len(text)
+    var i = at + utbl.seq_len(text, at)
+    for _ in 0..n
+        if i >= n
+            break
+        if combining_class(d, utbl.cp_at(text, i)) == 0
+            break
+        i = i + utbl.seq_len(text, i)
+    i
 
 // UniForm is which normalisation form.
 pub enum UniForm
@@ -75,7 +310,10 @@ pub enum UniQuickCheck
 //     println(nfc)
 // ```
 pub fn normalize(d: udata.UniData, text: Str, form: UniForm) -> Str []
-    todo("unicode-nv.unorm.normalize")
+    if is_normalized(d, text, form)
+        text
+    else
+        to_str(normalized_cps(d, text, form))
 
 // normalize_into appends the normalised text to a caller's buffer.
 //
@@ -84,7 +322,7 @@ pub fn normalize(d: udata.UniData, text: Str, form: UniForm) -> Str []
 // buffer instead of producing one string per input.  The same shape
 // numfmt-nv and ansi-nv use for the same reason.
 pub fn normalize_into(out: [u8], d: udata.UniData, text: Str, form: UniForm) -> [u8] []
-    todo("unicode-nv.unorm.normalize_into")
+    emit_utf8(out, normalized_cps(d, text, form))
 
 // quick_check is UAX #15's quick check, which never allocates.
 //
@@ -92,7 +330,38 @@ pub fn normalize_into(out: [u8], d: udata.UniData, text: Str, form: UniForm) -> 
 // codepoint that makes the answer `QcNo`.  This is the function to
 // call before `normalize` in anything hot.
 pub fn quick_check(d: udata.UniData, text: Str, form: UniForm) -> UniQuickCheck []
-    todo("unicode-nv.unorm.quick_check")
+    var answer = QcYes
+    var last_cc = 0
+    var starter = 0 - 1
+    var at = 0
+    for _ in 0..str.len(text)
+        if at >= str.len(text)
+            break
+        let ch = utbl.cp_at(text, at)
+        let cc = combining_class(d, ch)
+        if last_cc > cc and cc != 0
+            answer = QcNo
+            break
+        let qc = qc_of(d, ch, form)
+        if qc == QC_N
+            answer = QcNo
+            break
+        if qc == QC_M
+            // The annex's table stops at "maybe" here, and one more
+            // lookup settles most of them: a mark that the starter
+            // before it actually composes with WILL move when the
+            // string is normalised, which is `QcNo` rather than a
+            // question.  Where the pair does not compose the answer
+            // stays `QcMaybe` and `is_normalized` runs the algorithm.
+            if starter >= 0 and (last_cc < cc or last_cc == 0) and compose_pair(d, starter, ch) != None
+                answer = QcNo
+                break
+            answer = QcMaybe
+        if cc == 0
+            starter = ch
+        last_cc = cc
+        at = at + utbl.seq_len(text, at)
+    answer
 
 // is_normalized is the definite answer.
 //
@@ -100,7 +369,10 @@ pub fn quick_check(d: udata.UniData, text: Str, form: UniForm) -> UniQuickCheck 
 // never wrong and sometimes slower.  It still allocates nothing: it
 // compares as it goes rather than building the normalised form.
 pub fn is_normalized(d: udata.UniData, text: Str, form: UniForm) -> Bool []
-    todo("unicode-nv.unorm.is_normalized")
+    match quick_check(d, text, form)
+        QcYes => true
+        QcNo => false
+        QcMaybe => to_str(normalized_cps(d, text, form)) == text
 
 // compare decides canonical equivalence without normalising either
 // side.
@@ -114,12 +386,20 @@ pub fn is_normalized(d: udata.UniData, text: Str, form: UniForm) -> Bool []
 // Negative, zero or positive, ordered by the normalised forms, so it
 // can also be a sort key comparator.
 pub fn compare(d: udata.UniData, a: Str, b: Str, form: UniForm) -> Int []
-    todo("unicode-nv.unorm.compare")
+    // The cheap path first: two strings that are both already in the
+    // form are compared as they stand, with nothing built and nothing
+    // normalised.  That is what a cache key or a filename comparison
+    // hits, and it is the reason this function exists rather than
+    // "normalise both and use `==`".
+    if quick_check(d, a, form) == QcYes and quick_check(d, b, form) == QcYes
+        compare_cps_of(a, b)
+    else
+        compare_runs(d, a, b, form)
 
 // equivalent is `compare(...) == 0`, named for the question it
 // answers.
 pub fn equivalent(d: udata.UniData, a: Str, b: Str, form: UniForm) -> Bool []
-    todo("unicode-nv.unorm.equivalent")
+    compare(d, a, b, form) == 0
 
 // combining_class is a codepoint's Canonical_Combining_Class.
 //
@@ -130,7 +410,10 @@ pub fn equivalent(d: udata.UniData, a: Str, b: Str, form: UniForm) -> Bool []
 // marks, a renderer stacking diacritics) needs it and should not have
 // to reimplement the table.
 pub fn combining_class(d: udata.UniData, ch: Int) -> Int []
-    todo("unicode-nv.unorm.combining_class")
+    if udata.data_covers(d, ch) == false
+        0
+    else
+        udata.t_cover(d, udata.T_CCC, ch)
 
 // decompose_char is a single codepoint's decomposition.
 //
@@ -142,7 +425,8 @@ pub fn combining_class(d: udata.UniData, ch: Int) -> Int []
 // Hangul is computed rather than tabulated, per UAX #15 § 3.12, and
 // answers here exactly as if it were.
 pub fn decompose_char(d: udata.UniData, ch: Int, compat: Bool) -> [Int] []
-    todo("unicode-nv.unorm.decompose_char")
+    var out: [Int] = []
+    decomp_into(d, out, ch, compat)
 
 // compose_pair is the primary composite of a starter and a combining
 // codepoint, if there is one.
@@ -154,7 +438,20 @@ pub fn decompose_char(d: udata.UniData, ch: Int, compat: Bool) -> [Int] []
 // does not necessarily recompose, and a normaliser that assumed it
 // did would produce text that is not NFC.
 pub fn compose_pair(d: udata.UniData, starter: Int, combining: Int) -> ?Int []
-    todo("unicode-nv.unorm.compose_pair")
+    if combining_class(d, starter) != 0
+        None
+    elif starter >= L_BASE and starter < L_BASE + L_COUNT and combining >= V_BASE and combining < V_BASE + V_COUNT
+        Some(S_BASE + ((starter - L_BASE) * V_COUNT + (combining - V_BASE)) * T_COUNT)
+    elif is_hangul(starter) and (starter - S_BASE) % T_COUNT == 0 and combining > T_BASE and combining < T_BASE + T_COUNT
+        Some(starter + combining - T_BASE)
+    elif udata.data_covers(d, starter) == false or udata.data_covers(d, combining) == false
+        None
+    else
+        let at = udata.t_find_pair(d, udata.T_COMP, starter, combining)
+        if at < 0
+            None
+        else
+            Some(udata.t_value(d, udata.T_COMP, at + 6, 3))
 
 // is_starter answers whether the codepoint has combining class 0.
 //
@@ -163,7 +460,7 @@ pub fn compose_pair(d: udata.UniData, starter: Int, combining: Int) -> ?Int []
 // makes streaming normalisation possible and what bounds the buffer
 // it needs.
 pub fn is_starter(d: udata.UniData, ch: Int) -> Bool []
-    todo("unicode-nv.unorm.is_starter")
+    combining_class(d, ch) == 0
 
 // stream_boundary is the byte offset of the last position in `text`
 // at which normalisation can safely stop.
@@ -177,4 +474,93 @@ pub fn is_starter(d: udata.UniData, ch: Int) -> Bool []
 // Zero when no position in the chunk is safe, which is what a chunk
 // that is entirely combining marks deserves.
 pub fn stream_boundary(d: udata.UniData, text: Str, form: UniForm) -> Int []
-    todo("unicode-nv.unorm.stream_boundary")
+    var safe = 0
+    var at = 0
+    for _ in 0..str.len(text)
+        if at >= str.len(text)
+            break
+        if safe_starter(d, text, at, form)
+            safe = at
+        at = at + utbl.seq_len(text, at)
+    safe
+
+// Two strings compared codepoint by codepoint, neither normalised.
+//
+// The comparison `compare` makes when both sides are already in the
+// form.  Codepoints and not bytes, so the order is the order of the
+// scalar values rather than of their UTF-8 encodings — which agree for
+// every pair UTF-8 can encode, and saying which one is meant costs
+// nothing.
+fn compare_cps_of(a: Str, b: Str) -> Int
+    var i = 0
+    var j = 0
+    var answer = 0
+    for _ in 0..(str.len(a) + str.len(b) + 1)
+        if i >= str.len(a) or j >= str.len(b)
+            break
+        let x = utbl.cp_at(a, i)
+        let y = utbl.cp_at(b, j)
+        if x != y
+            answer = x - y
+            break
+        i = i + utbl.seq_len(a, i)
+        j = j + utbl.seq_len(b, j)
+    if answer != 0
+        answer
+    elif i >= str.len(a) and j >= str.len(b)
+        0
+    elif i >= str.len(a)
+        0 - 1
+    else
+        1
+
+// Two lists of codepoints compared element by element.
+fn compare_cps(x: [Int], y: [Int]) -> Int
+    var answer = 0
+    let n = list.len(x)
+    let m = list.len(y)
+    var k = 0
+    for _ in 0..n
+        if k >= n or k >= m
+            break
+        let a = list.get(x, k, 0)
+        let b = list.get(y, k, 0)
+        if a != b
+            answer = a - b
+            break
+        k = k + 1
+    if answer != 0
+        answer
+    else
+        n - m
+
+// Two strings compared one starter-run at a time.
+//
+// The slow half of `compare`.  Each side's next run is normalised on
+// its own and the two are compared; the walk stops at the first run
+// that differs, so neither normalised string is ever built whole.
+fn compare_runs(d: udata.UniData, a: Str, b: Str, form: UniForm) -> Int
+    var i = 0
+    var j = 0
+    var answer = 0
+    for _ in 0..(str.len(a) + str.len(b) + 1)
+        if i >= str.len(a) or j >= str.len(b)
+            break
+        let ai = run_end(d, a, i)
+        let bj = run_end(d, b, j)
+        let x = normalized_cps(d, str.slice(a, i, ai), form)
+        let y = normalized_cps(d, str.slice(b, j, bj), form)
+        let c = compare_cps(x, y)
+        if c != 0
+            answer = c
+            break
+        i = ai
+        j = bj
+    if answer != 0
+        answer
+    elif i >= str.len(a) and j >= str.len(b)
+        0
+    elif i >= str.len(a)
+        0 - 1
+    else
+        1

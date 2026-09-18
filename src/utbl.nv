@@ -30,6 +30,7 @@
 // however many bytes the entry has left, also big-endian, and each
 // table's entry size is a constant beside it.
 
+use std.list
 use std.str
 
 // The three-byte key at byte offset `at`.
@@ -193,3 +194,84 @@ fn cp_start(text: Str, at: Int) -> Int
             break
         i = i - 1
     i
+
+// ── the same two searches over a packed blob ─────────────────────────
+//
+// `udata.data_from_pack` takes the tier-two tables as bytes the host
+// read, and every lookup behind that handle reads out of the caller's
+// slice rather than out of a constant.  A `[u8]` is not a `Str` and
+// `str.byte_at_or` cannot read one, so the searches are written twice.
+// They are the same searches, deliberately kept side by side so a fix
+// to one is visibly a fix to the other.
+//
+// A PACKED SECTION IS NOT AT OFFSET ZERO, so these take a base and a
+// length where the `Str` forms take a whole table.
+
+// The three-byte key `esz` entries into a packed section.
+fn pkey(t: [u8], at: Int) -> Int
+    (list.get(t, at, 0) << 16) | (list.get(t, at + 1, 0) << 8) | list.get(t, at + 2, 0)
+
+// The `w`-byte big-endian value at byte offset `at` of a packed blob.
+fn pvalue(t: [u8], at: Int, w: Int) -> Int
+    var v = 0
+    for i in 0..w
+        v = (v << 8) | list.get(t, at + i, 0)
+    v
+
+// `cover`, over the packed section at `base` holding `n` bytes.
+fn pcover(t: [u8], base: Int, n: Int, esz: Int, cp: Int) -> Int
+    var lo = 0
+    var hi = (n / esz) - 1
+    var found = 0
+    for _ in 0..STEPS
+        if lo > hi
+            break
+        let mid = lo + (hi - lo) / 2
+        if pkey(t, base + mid * esz) <= cp
+            found = mid
+            lo = mid + 1
+        else
+            hi = mid - 1
+    pvalue(t, base + found * esz + 3, esz - 3)
+
+// `find`, over the packed section at `base` holding `n` bytes.  The
+// answer is an offset into the WHOLE blob, as `pvalue` wants it.
+fn pfind(t: [u8], base: Int, n: Int, esz: Int, cp: Int) -> Int
+    var lo = 0
+    var hi = (n / esz) - 1
+    var at = 0 - 1
+    for _ in 0..STEPS
+        if lo > hi
+            break
+        let mid = lo + (hi - lo) / 2
+        let off = base + mid * esz
+        let k = pkey(t, off)
+        if k == cp
+            at = off
+            break
+        elif k < cp
+            lo = mid + 1
+        else
+            hi = mid - 1
+    at
+
+// `find_pair`, over the packed section at `base` holding `n` bytes.
+fn pfind_pair(t: [u8], base: Int, n: Int, esz: Int, a: Int, b: Int) -> Int
+    var lo = 0
+    var hi = (n / esz) - 1
+    var at = 0 - 1
+    for _ in 0..STEPS
+        if lo > hi
+            break
+        let mid = lo + (hi - lo) / 2
+        let off = base + mid * esz
+        let k = pkey(t, off)
+        let k2 = pkey(t, off + 3)
+        if k == a and k2 == b
+            at = off
+            break
+        elif k < a or (k == a and k2 < b)
+            lo = mid + 1
+        else
+            hi = mid - 1
+    at

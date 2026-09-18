@@ -154,14 +154,25 @@ fn test_uax31_is_what_a_tokenizer_wants() [io]
 
 @test
 fn test_xid_is_the_form_that_survives_normalisation() [io]
-    // U+2126 OHM SIGN is ID_Start and NOT XID_Start, because NFKC maps
-    // it to U+03A9 and the result would no longer be an identifier
-    // start under the same rules.  A language comparing identifiers
-    // after NFKC must use the XID forms or two visually identical
-    // identifiers become different symbols.
-    test.case("the ohm sign starts an ID but not an XID")
+    // U+037A GREEK YPOGEGRAMMENI is ID_Start and NOT XID_Start: NFKC
+    // maps it to U+0345 COMBINING GREEK YPOGEGRAMMENI, which is a mark
+    // and cannot start an identifier, so the normalised form would no
+    // longer be one.  A language comparing identifiers after NFKC must
+    // use the XID forms or two visually identical identifiers become
+    // different symbols.
+    //
+    // THE INTERFACE RELEASE NAMED U+2126 OHM SIGN HERE AND WAS WRONG.
+    // Its NFKC is U+03A9 GREEK CAPITAL LETTER OMEGA, which IS an
+    // identifier start, so the ohm sign is XID_Start in
+    // `DerivedCoreProperties.txt` and always has been.  The rule the
+    // test is about is real; the codepoint chosen to show it was not.
+    test.case("the ypogegrammeni starts an ID but not an XID")
+    test.assert(uclass.is_id_start(0x037A))
+    test.assert(uclass.is_xid_start(0x037A) == false)
+
+    test.case("and the ohm sign, which is the example everyone reaches for, is both")
     test.assert(uclass.is_id_start(0x2126))
-    test.assert(uclass.is_xid_start(0x2126) == false)
+    test.assert(uclass.is_xid_start(0x2126))
 
     test.case("an ordinary letter is both")
     test.assert(uclass.is_xid_start(0x0041))
