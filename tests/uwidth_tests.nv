@@ -13,6 +13,7 @@
 // THE FIRST TEST IS THE CONTRACT WITH textwrap-nv and is the one that
 // must never be allowed to go red for a reason other than `todo()`.
 
+use std.str
 use std.test
 use uwidth
 
@@ -144,3 +145,67 @@ fn test_fit_prefix_never_returns_a_partial_cell() [io]
 
     test.case("and asking for more columns than there is text returns the text")
     test.assert(uwidth.fit_prefix("hi", 80) == 2)
+
+@test
+fn test_the_east_asian_property_answers_all_six_of_its_classes() [io]
+    // The enum is public because the ambiguous case cannot be resolved
+    // by this package, and a caller writing its own policy matches on
+    // it.  A match with an arm nobody reaches is a match that can be
+    // wrong without anyone noticing, so all six are named here.
+    test.case("N — neutral, which is everything with no East Asian tradition")
+    // U+05D0 HEBREW LETTER ALEF.  The Cyrillic letters are NOT the
+    // example to reach for: U+0410 onwards is class A, which is the
+    // whole reason `char_width_cjk` exists.
+    test.assert(uwidth.east_asian_width(0x05D0) == EaNeutral)
+
+    test.case("Na — narrow, the ASCII range and its relatives")
+    test.assert(uwidth.east_asian_width(0x0041) == EaNarrow)
+
+    test.case("W — the ideographs")
+    test.assert(uwidth.east_asian_width(0x4E16) == EaWide)
+
+    test.case("F, H and A, which the rules above already turn into cells")
+    test.assert(uwidth.east_asian_width(0xFF21) == EaFullwidth)
+    test.assert(uwidth.east_asian_width(0xFF66) == EaHalfwidth)
+    test.assert(uwidth.east_asian_width(0x00A1) == EaAmbiguous)
+
+    test.case("and a value that is not a codepoint is neutral, hence one cell")
+    test.assert(uwidth.east_asian_width(0x110000) == EaNeutral)
+    test.assert(uwidth.east_asian_width(0 - 1) == EaNeutral)
+
+@test
+fn test_the_cjk_rule_still_gives_a_combining_mark_no_cell() [io]
+    // `char_width_cjk` widens the ambiguous class and NOTHING else.  A
+    // terminal configured East Asian still draws no cell for a
+    // combining mark, and a version of this function that had forgotten
+    // the zero-width test would measure every accented word too long on
+    // exactly the terminals that care most.
+    test.case("zero stays zero under the CJK rule")
+    test.assert(uwidth.char_width_cjk(0x0301) == 0)
+    test.assert(uwidth.char_width_cjk(0x200D) == 0)
+
+    test.case("and an empty cluster is no cells")
+    test.assert(uwidth.cluster_width("") == 0)
+    test.assert(uwidth.text_width("") == 0)
+    test.assert(uwidth.str_width("") == 0)
+    test.assert(uwidth.fit_prefix("", 10) == 0)
+
+@test
+fn test_measuring_survives_bytes_that_are_not_utf8() [io]
+    // A width function is called on whatever the program has, and a
+    // program that read a file has bytes rather than text.  A truncated
+    // sequence and a stray continuation byte each measure as one cell
+    // and neither stops the walk, which is the same rule `str.chars`
+    // follows.
+    let truncated = str.from_byte(0xC3) + "A"
+    let stray = str.from_byte(0x88) + "B"
+    let cut_short = str.from_byte(0xE4) + str.from_byte(0xB8)
+
+    test.case("a lead byte with nothing after it is one cell, then the letter")
+    test.assert(uwidth.str_width(truncated) == 2)
+
+    test.case("a continuation byte on its own is one cell")
+    test.assert(uwidth.str_width(stray) == 2)
+
+    test.case("and a three-byte sequence cut after two is two single bytes")
+    test.assert(uwidth.str_width(cut_short) == 2)

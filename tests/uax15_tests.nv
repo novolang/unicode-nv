@@ -72,10 +72,10 @@ fn hex_of(t: Str) -> Int
 // it, and the committed sample otherwise.
 fn corpus() -> [Str] [io, fs]
     match env.get("NOVO_UCD")
-        None => str.split(NORMALIZATION_CASES, "\n")
+        None      => str.split(NORMALIZATION_CASES, "\n")
         Some(dir) =>
             match fs.read(dir + "/NormalizationTest.txt")
-                None => str.split(NORMALIZATION_CASES, "\n")
+                None        => str.split(NORMALIZATION_CASES, "\n")
                 Some(whole) => usable_lines(whole)
 
 // The cases of the whole file: comments, blank lines and the `@Part`
@@ -92,7 +92,7 @@ fn usable_lines(whole: Str) -> [Str]
 // A line with its trailing comment removed.
 fn before_hash(line: Str) -> Str
     match str.index(line, "#")
-        None => line
+        None     => line
         Some(at) => str.slice(line, 0, at)
 
 // How many of one case's twenty equalities fail.

@@ -205,3 +205,81 @@ fn test_normalize_into_appends_rather_than_allocating() [io]
 
 fn udata_buffer(d: udata.UniData) -> [u8] [io]
     unorm.normalize_into([], d, "ab", FormNfc)
+
+@test
+fn test_compare_orders_a_prefix_before_the_whole() [io]
+    // `compare` is a comparator as well as an equality, so the two
+    // ends of the walk matter: one side running out first is the
+    // shorter, on both the cheap path and the one that normalises.
+    let d = udata.data_full()
+
+    test.case("on the cheap path, where neither side needs any work")
+    test.assert(unorm.compare(d, "ab", "abc", FormNfc) < 0)
+    test.assert(unorm.compare(d, "abc", "ab", FormNfc) > 0)
+    test.assert(unorm.compare(d, "", "", FormNfc) == 0)
+    test.assert(unorm.compare(d, "", "a", FormNfc) < 0)
+
+    test.case("and on the path that normalises, where the lengths differ after it")
+    test.assert(unorm.compare(d, "A\u{030A}", "\u{00C5}b", FormNfc) < 0)
+    test.assert(unorm.compare(d, "\u{00C5}b", "A\u{030A}", FormNfc) > 0)
+    // And the order is the NORMALISED form's, not the input's: "A"
+    // with a ring composes to U+00C5, which sorts AFTER "B".  A
+    // comparator that ordered by what it was handed would put these
+    // two the other way round and disagree with itself the moment one
+    // side arrived already composed.
+    test.assert(unorm.compare(d, "A\u{030A}", "B\u{030A}", FormNfc) > 0)
+
+    test.case("three jamo and one syllable are the same text, which is what chunking is for")
+    test.assert(unorm.equivalent(d, "\u{1111}\u{1171}\u{11B6}", "\u{D4DB}", FormNfc))
+
+@test
+fn test_the_marks_of_one_run_come_out_in_class_order_however_many_there_are() [io]
+    // The canonical ordering is a STABLE sort of each run of
+    // non-starters by combining class, and the insertion that
+    // implements it has to walk back past the marks already placed.
+    // Three marks out of order is what makes it walk more than once.
+    let d = udata.data_full()
+
+    test.case("a dot above, a dot below and a cedilla, typed in the wrong order")
+    test.assert(unorm.normalize(d, "a\u{0307}\u{0323}\u{0327}", FormNfd)
+                == "a\u{0327}\u{0323}\u{0307}")
+
+    test.case("two marks of the same class keep the order they were typed in")
+    test.assert(unorm.normalize(d, "a\u{0301}\u{0308}", FormNfd) == "a\u{0301}\u{0308}")
+
+    test.case("and NFD says so about itself")
+    test.assert(unorm.quick_check(d, "a\u{0327}\u{0323}\u{0307}", FormNfd) == QcYes)
+    test.assert(unorm.quick_check(d, "a\u{0307}\u{0323}", FormNfd) == QcNo)
+    test.assert(unorm.is_normalized(d, "a\u{0327}\u{0323}\u{0307}", FormNfd))
+
+@test
+fn test_quick_check_says_maybe_when_one_lookup_cannot_settle_it() [io]
+    // `QcMaybe` is the third answer and it has to be reachable: a mark
+    // whose quick-check property is Maybe, standing where the starter
+    // before it does NOT compose with it, is a string the table alone
+    // cannot decide and the algorithm has to be run on.
+    let d = udata.data_full()
+
+    test.case("a ring above after a letter that takes no ring")
+    test.assert(unorm.quick_check(d, "b\u{030A}", FormNfc) == QcMaybe)
+
+    test.case("and the definite answer agrees that it is already NFC")
+    test.assert(unorm.is_normalized(d, "b\u{030A}", FormNfc))
+    test.assert(unorm.normalize(d, "b\u{030A}", FormNfc) == "b\u{030A}")
+
+    test.case("stream_boundary finds the last safe stop in a longer chunk")
+    test.assert(unorm.stream_boundary(d, "a\u{0301}bc", FormNfc) == 4)
+
+@test
+fn test_marks_reorder_with_no_starter_to_hang_on() [io]
+    // A chunk that is entirely combining marks is what a streaming
+    // normaliser meets at a chunk edge, and the canonical ordering has
+    // to walk all the way to the front of it rather than stopping at a
+    // base that is not there.
+    let d = udata.data_full()
+
+    test.case("a mark of lower class sorts in front of one already placed")
+    test.assert(unorm.normalize(d, "\u{0301}\u{0323}", FormNfd) == "\u{0323}\u{0301}")
+
+    test.case("and the streaming answer for such a chunk is that none of it is safe")
+    test.assert(unorm.stream_boundary(d, "\u{0301}\u{0323}", FormNfd) == 0)

@@ -157,10 +157,10 @@ fn same(a: [Int], b: [Int]) -> Bool
 // release is verified against.
 fn corpus(committed: Str, file_name: Str) -> [Str] [io, fs]
     match env.get("NOVO_UCD")
-        None => str.split(committed, "\n")
+        None      => str.split(committed, "\n")
         Some(dir) =>
             match fs.read(dir + "/auxiliary/" + file_name)
-                None => str.split(committed, "\n")
+                None        => str.split(committed, "\n")
                 Some(whole) => usable_lines(whole)
 
 // The cases of a whole annex file: comments and blank lines dropped.
@@ -177,7 +177,7 @@ fn usable_lines(whole: Str) -> [Str]
 // A line with its trailing comment removed.
 fn before_hash(line: Str) -> Str
     match str.index(line, "#")
-        None => line
+        None     => line
         Some(at) => str.slice(line, 0, at)
 
 @test

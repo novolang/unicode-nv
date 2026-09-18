@@ -32,7 +32,6 @@
 // reason that one function takes a handle.  Both are searched by
 // `utbl.cover`, so every function here is one binary search and a mask.
 use std.str
-use udbcat
 use udbcore
 use udata
 use utbl
@@ -259,7 +258,7 @@ fn category(d: udata.UniData, ch: Int) -> UniCategory []
     if udata.data_covers(d, ch) == false
         CatUnassigned
     else
-        cat_of_index(utbl.cover(udbcat.CAT, udbcat.CAT_ESZ, ch))
+        cat_of_index(udata.t_cover(d, udata.T_CAT, ch))
 
 // category_abbrev is the two-letter abbreviation — "Lu", "Nd", "Zs".
 //

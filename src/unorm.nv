@@ -153,15 +153,19 @@ fn insert_ordered(d: udata.UniData, out: [Int], ch: Int) -> [Int]
     if c == 0
         list.push(out, ch)
     else
+        // Indexed from the END rather than by a cursor walking down,
+        // because the loop's own bound is then the whole guarantee that
+        // the index stays in range: `n` steps from `n - 1` reach 0 and
+        // stop.  Written the other way it needed an `at == 0` test that
+        // no input could ever reach, which is a line no test can cover
+        // and a reader has to reason about.
         let n = list.len(out)
         var at = n
-        for _ in 0..n
-            if at == 0
-                break
-            let pc = combining_class(d, list.get(out, at - 1, 0))
+        for k in 0..n
+            let pc = combining_class(d, list.get(out, n - 1 - k, 0))
             if pc == 0 or pc <= c
                 break
-            at = at - 1
+            at = n - 1 - k
         if at == n
             list.push(out, ch)
         else

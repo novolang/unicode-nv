@@ -12,8 +12,9 @@
 // `GraphemeBreakTest.txt` — about 1100 cases — becomes a generated
 // suite beside this one; these are the ones worth reading by hand.
 
-use std.test
 use std.list
+use std.str
+use std.test
 use ugrapheme
 
 @test
@@ -217,3 +218,144 @@ fn test_word_boundaries_keep_the_gaps() [io]
 
     test.case("and next_word steps over the word, not over the space")
     test.assert(ugrapheme.next_word(text, 0) == 3)
+
+@test
+fn test_an_indic_conjunct_is_one_cluster() [io]
+    // GB9c, added in Unicode 15.1 and the newest rule in the annex: a
+    // consonant, a virama and another consonant are one cluster,
+    // because that is what a reader sees and what a backspace should
+    // remove.  It is the rule `UniBreakState.linker_run` exists for,
+    // and the one that cannot be decided from the previous codepoint.
+    test.case("ka, virama, ta — DEVANAGARI, one conjunct")
+    test.assert(ugrapheme.count("\u{0915}\u{094D}\u{0924}") == 1)
+
+    test.case("but a virama after something that is not a consonant does not join")
+    test.assert(ugrapheme.count("a\u{094D}\u{0924}") == 2)
+
+    test.case("and the counter is visible in the state the machine hands back")
+    let s0 = ugrapheme.break_state()
+    let ka = ugrapheme.break_step(s0, 0x0915)
+    test.assert(ka.state.linker_run == 0)
+    let virama = ugrapheme.break_step(ka.state, 0x094D)
+    test.assert(virama.state.linker_run == 1)
+    let ta = ugrapheme.break_step(virama.state, 0x0924)
+    test.assert(ta.boundary == false)
+    test.assert(ta.state.linker_run == 0)
+
+    test.case("a codepoint outside Unicode opens no conjunct and joins nothing")
+    let odd = ugrapheme.break_step(s0, 0x110000)
+    test.assert(odd.boundary)
+    test.assert(odd.state.linker_run == 0 - 1)
+
+@test
+fn test_the_cursor_answers_none_at_the_end_and_is_clamped_at_both() [io]
+    // A cursor is what a renderer resuming at a scroll position holds,
+    // and a scroll position is arithmetic somebody else did.
+    let text = "ab"
+
+    test.case("a cursor past the end is done and has nothing to give")
+    let past = ugrapheme.cursor_at(text, 99)
+    test.assert(ugrapheme.cursor_done(past))
+    test.assert(ugrapheme.cursor_next(past) == None)
+
+    test.case("and one before the start is moved to it")
+    let before = ugrapheme.cursor_at(text, 0 - 4)
+    test.assert(before.at == 0)
+
+    test.case("the boundary questions are clamped the same way")
+    test.assert(ugrapheme.next_boundary(text, 99) == 2)
+    test.assert(ugrapheme.prev_boundary(text, 0) == 0)
+    test.assert(ugrapheme.nth(text, 0 - 1) == None)
+    test.assert(ugrapheme.truncate_clusters(text, 0 - 1) == 0)
+
+@test
+fn test_every_kind_of_word_segment_is_reported_as_what_it_holds() [io]
+    // A tokenizer wants the letters and not the spaces; a word count
+    // wants the same; a double-click that selected the run of spaces
+    // between two words did the wrong thing.  So the kind is on the
+    // segment, and all four arms are reachable.
+    let text = "ab 12 ·\u{4E16}"
+
+    test.case("letters, spaces, numbers, punctuation and a script UAX #29 leaves to a dictionary")
+    let w = ugrapheme.words(text)
+    test.assert(list.get(w, 0).kind == WordLetters)
+    test.assert(list.get(w, 1).kind == WordSpace)
+    test.assert(list.get(w, 2).kind == WordNumeric)
+    test.assert(list.get(w, 3).kind == WordSpace)
+    test.assert(list.get(w, 4).kind == WordOther)
+    test.assert(list.get(w, 5).kind == WordLetters)
+
+    test.case("the segments tile the string with no gap and no overlap")
+    var at = 0
+    for i in 0..list.len(w)
+        test.assert(list.get(w, i).start == at)
+        at = list.get(w, i).end
+    test.assert(at == str.len(text))
+
+@test
+fn test_the_word_rules_that_join_across_a_character() [io]
+    // WB6 and WB7 join two letters across a full stop or an
+    // apostrophe; WB7a, WB7b and WB7c are Hebrew's three; WB11 and
+    // WB12 do the same for numbers; WB13a and WB13b are the
+    // connectors.  Each is a rule a naive split-on-non-letter gets
+    // wrong, and each has its own arm.
+    test.case("WB6/WB7 — a full stop between letters does not end a word")
+    test.assert(list.len(ugrapheme.words("a.b")) == 1)
+
+    test.case("WB11/WB12 — nor does a comma between digits")
+    test.assert(list.len(ugrapheme.words("1,2")) == 1)
+
+    test.case("WB7a — a Hebrew letter keeps a following apostrophe")
+    test.assert(list.len(ugrapheme.words("\u{05D0}'")) == 1)
+
+    test.case("WB7b/WB7c — and a quotation mark between two Hebrew letters")
+    test.assert(list.len(ugrapheme.words("\u{05D0}\"\u{05D1}")) == 1)
+
+    test.case("WB13 — katakana runs together")
+    test.assert(list.len(ugrapheme.words("\u{30A2}\u{30A4}")) == 1)
+
+    test.case("WB13a/WB13b — an underscore joins what is on both sides of it")
+    test.assert(list.len(ugrapheme.words("a_1")) == 1)
+    test.assert(list.len(ugrapheme.words("_a")) == 1)
+
+    test.case("WB3a/WB3b — a newline ends a word on both sides")
+    test.assert(list.len(ugrapheme.words("a\nb")) == 3)
+
+    test.case("WB15/WB16 — regional indicators pair here too")
+    test.assert(list.len(ugrapheme.words("\u{1F1E6}\u{1F1E7}")) == 1)
+
+    test.case("and the word walk is clamped like the cluster walk")
+    test.assert(ugrapheme.next_word("ab", 99) == 2)
+    test.assert(ugrapheme.prev_word("ab", 0) == 0)
+
+@test
+fn test_a_windows_line_ending_is_one_word_segment_and_not_two() [io]
+    // WB3 — CR × LF.  The same reason GB3 exists: a line ending is one
+    // thing, and a "delete previous word" that removed half of one
+    // would leave a lone carriage return in the buffer.
+    test.case("CR and LF do not part")
+    let w = ugrapheme.words("a\r\nb")
+    test.assert(list.len(w) == 3)
+    test.assert(list.get(w, 1).start == 1)
+    test.assert(list.get(w, 1).end == 3)
+    test.assert(list.get(w, 1).kind == WordSpace)
+
+    test.case("and the other order is two segments")
+    test.assert(list.len(ugrapheme.words("\n\r")) == 2)
+
+@test
+fn test_segmenting_bytes_that_are_not_text_still_terminates() [io]
+    // A segmenter is called on whatever the program has.  A four-byte
+    // sequence that decodes ABOVE U+10FFFF is well-formed UTF-8 in
+    // shape and not a codepoint at all; it has no properties, so it
+    // joins nothing and is its own segment.
+    let over = str.from_byte(0xF4) + str.from_byte(0x90) + str.from_byte(0x80) + str.from_byte(0x80)
+
+    test.case("it is one cluster and one word segment")
+    test.assert(ugrapheme.count(over) == 1)
+    test.assert(list.len(ugrapheme.words(over)) == 1)
+    test.assert(list.get(ugrapheme.words(over), 0).kind == WordOther)
+
+    test.case("and a truncated sequence does not stall the walk")
+    let cut = str.from_byte(0xE4) + "a"
+    test.assert(ugrapheme.count(cut) == 2)

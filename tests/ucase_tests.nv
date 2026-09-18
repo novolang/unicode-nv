@@ -161,3 +161,126 @@ fn test_the_simple_forms_are_the_building_blocks_for_a_caller_s_own_rule() [io]
 
     test.case("and an ordinary letter's full form is a one-element list")
     test.assert(list.len(ucase.full_lower(d, 0x41, LANG_ROOT)) == 1)
+
+@test
+fn test_lithuanian_keeps_the_dot_that_latin_drops() [io]
+    // `SpecialCasing.txt`'s Lithuanian block, which is three
+    // conditions rather than three mappings: More_Above when
+    // lowercasing, so the dot the accent would hide is written
+    // explicitly, and After_Soft_Dotted when uppercasing, so it is
+    // taken away again.  A per-codepoint mapping can express neither.
+    let d = udata.data_full()
+
+    test.case("lowercasing a capital I under an accent introduces the dot")
+    test.assert(ucase.to_lower(d, "I\u{0300}", LANG_LITHUANIAN) == "i\u{0307}\u{0300}")
+    test.assert(ucase.to_lower(d, "J\u{0300}", LANG_LITHUANIAN) == "j\u{0307}\u{0300}")
+    test.assert(ucase.to_lower(d, "\u{012E}\u{0300}", LANG_LITHUANIAN) == "\u{012F}\u{0307}\u{0300}")
+
+    test.case("with no accent above it there is nothing to introduce")
+    test.assert(ucase.to_lower(d, "I", LANG_LITHUANIAN) == "i")
+
+    test.case("and uppercasing takes the dot back off a soft-dotted letter")
+    test.assert(ucase.to_upper(d, "i\u{0307}", LANG_LITHUANIAN) == "I")
+
+    test.case("the root locale does none of it")
+    test.assert(ucase.to_lower(d, "I\u{0300}", LANG_ROOT) == "i\u{0300}")
+
+@test
+fn test_turkish_moves_the_dot_rather_than_the_letter() [io]
+    // The other half of `SpecialCasing.txt`'s conditional section.
+    // After_I removes a combining dot that a lowercased capital I has
+    // already accounted for, and Not_Before_Dot keeps the dotless i
+    // from swallowing one.
+    let d = udata.data_full()
+
+    test.case("a capital I followed by a combining dot lowercases to a plain i")
+    test.assert(ucase.to_lower(d, "I\u{0307}", LANG_TURKISH) == "i")
+
+    test.case("and a capital I on its own lowercases to the dotless one")
+    test.assert(ucase.to_lower(d, "I", LANG_TURKISH) == "\u{0131}")
+
+    test.case("a dotted capital lowercases to a plain i, with no dot left over")
+    test.assert(ucase.to_lower(d, "\u{0130}", LANG_TURKISH) == "i")
+
+    test.case("the codepoint forms carry the same two rules")
+    test.assert(list.len(ucase.full_lower(d, 0x0130, LANG_TURKISH)) == 1)
+    test.assert(list.get(ucase.full_lower(d, 0x0049, LANG_TURKISH), 0) == 0x0131)
+    test.assert(list.get(ucase.full_upper(d, 0x0069, LANG_TURKISH), 0) == 0x0130)
+
+    test.case("and titlecasing a Turkish word starts it with the dotted capital")
+    test.assert(ucase.to_title(d, "istanbul", LANG_TURKISH) == "\u{0130}stanbul")
+
+@test
+fn test_a_caseless_comparison_that_does_not_match_says_so() [io]
+    // `eq_fold` stops at the first difference, which is the whole
+    // reason it exists rather than `fold(a) == fold(b)`.  A test that
+    // only ever compared equal strings would never reach that.
+    let d = udata.data_full()
+
+    test.case("two different words")
+    test.assert(ucase.eq_fold(d, "Stra\u{00DF}e", "STRAUSS") == false)
+
+    test.case("a prefix is not the whole")
+    test.assert(ucase.eq_fold(d, "abc", "ab") == false)
+    test.assert(ucase.eq_fold(d, "ab", "abc") == false)
+
+    test.case("but an expansion on one side and the letters on the other match")
+    test.assert(ucase.eq_fold(d, "\u{00DF}", "ss"))
+    test.assert(ucase.eq_fold(d, "", ""))
+
+    test.case("and a word with no cased letter in it titlecases unchanged")
+    test.assert(ucase.to_title(d, "123 ok", LANG_ROOT) == "123 Ok")
+
+@test
+fn test_the_five_conditions_read_past_what_they_are_allowed_to_ignore() [io]
+    // `SpecialCasing.txt` writes every condition as "ignoring
+    // Case_Ignorable characters" or "with no intervening character of
+    // combining class 0 or 230".  Those clauses are the whole
+    // difference between a rule that works on real text and one that
+    // works on the example in the annex, and each has to be walked.
+    let d = udata.data_full()
+
+    test.case("Final_Sigma looks past an apostrophe, which is case-ignorable")
+    test.assert(ucase.to_lower(d, "\u{039F}\u{03A3}'", LANG_ROOT) == "\u{03BF}\u{03C2}'")
+
+    test.case("and stops at a letter, which is not")
+    test.assert(ucase.to_lower(d, "\u{039F}\u{03A3}\u{039F}", LANG_ROOT)
+                == "\u{03BF}\u{03C3}\u{03BF}")
+
+    test.case("a sigma with nothing before it is not final")
+    test.assert(ucase.to_lower(d, "\u{03A3}", LANG_ROOT) == "\u{03C3}")
+
+    test.case("More_Above looks past a mark below to the mark above")
+    test.assert(ucase.to_lower(d, "I\u{0323}\u{0300}", LANG_LITHUANIAN)
+                == "i\u{0307}\u{0323}\u{0300}")
+
+    test.case("After_I stops at a letter, and at the start of the text")
+    test.assert(ucase.to_lower(d, "a\u{0307}", LANG_TURKISH) == "a\u{0307}")
+    test.assert(ucase.to_lower(d, "\u{0307}", LANG_TURKISH) == "\u{0307}")
+
+    test.case("After_Soft_Dotted does the same when uppercasing")
+    test.assert(ucase.to_upper(d, "a\u{0307}", LANG_LITHUANIAN) == "A\u{0307}")
+    test.assert(ucase.to_upper(d, "\u{0307}", LANG_LITHUANIAN) == "\u{0307}")
+
+    test.case("Not_Before_Dot looks past a mark below and stops at a letter")
+    test.assert(ucase.to_lower(d, "I\u{0323}", LANG_TURKISH) == "\u{0131}\u{0323}")
+    test.assert(ucase.to_lower(d, "Ia", LANG_TURKISH) == "\u{0131}a")
+
+    test.case("and titlecasing a word whose letters are not one byte each")
+    test.assert(ucase.to_title(d, "\u{00E9}lan", LANG_ROOT) == "\u{00C9}lan")
+
+@test
+fn test_lithuanian_writes_no_dot_where_there_is_no_accent_to_hide_it() [io]
+    // More_Above's other end: the rule introduces a dot only when
+    // something above follows, and "follows" stops at the next starter.
+    // A Lithuanian word with a plain letter after the capital I gets
+    // the ordinary mapping, which is the case that shows the condition
+    // is read rather than assumed.
+    let d = udata.data_full()
+
+    test.case("a letter after the I ends the search")
+    test.assert(ucase.to_lower(d, "Ia", LANG_LITHUANIAN) == "ia")
+    test.assert(ucase.to_lower(d, "Ja", LANG_LITHUANIAN) == "ja")
+
+    test.case("and a mark below, with nothing above it, is not enough")
+    test.assert(ucase.to_lower(d, "I\u{0323}", LANG_LITHUANIAN) == "i\u{0323}")

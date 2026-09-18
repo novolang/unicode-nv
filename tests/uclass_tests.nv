@@ -8,9 +8,10 @@
 // (ID_Start, XID_Continue).  The ones worth reading by hand are where
 // a derived property and the category it looks like disagree.
 
+use std.list
 use std.test
-use udata
 use uclass
+use udata
 
 @test
 fn test_the_thirty_categories_are_all_reachable() [io]
@@ -211,3 +212,49 @@ fn test_a_scalar_value_is_the_check_every_decoder_owes_its_caller() [io]
     test.case("and neither is anything above the range")
     test.assert(uclass.is_valid_scalar(0x110000) == false)
     test.assert(uclass.is_valid_scalar(0 - 1) == false)
+
+@test
+fn test_every_one_of_the_thirty_names_itself_and_reads_back() [io]
+    // `category_abbrev` and `category_named` are a pair, and the pair
+    // is what lets a `\p{...}` in a pattern be resolved once at compile
+    // time rather than compared as text per character.  A round trip
+    // over ALL THIRTY is the test, because the two functions are two
+    // hand-written tables and the way they go wrong is one arm.
+    let d = udata.data_full()
+    let samples = [0x0041, 0x0061, 0x01C5, 0x02B0, 0x4E16,
+        0x0301, 0x0903, 0x0488,
+        0x0030, 0x2160, 0x00BD,
+        0x005F, 0x002D, 0x0028, 0x0029, 0x00AB, 0x00BB, 0x002E,
+        0x002B, 0x0024, 0x005E, 0x00A6,
+        0x0020, 0x2028, 0x2029,
+        0x0009, 0x200D, 0xD800, 0xE000, 0x0378]
+    let names = ["Lu", "Ll", "Lt", "Lm", "Lo",
+        "Mn", "Mc", "Me",
+        "Nd", "Nl", "No",
+        "Pc", "Pd", "Ps", "Pe", "Pi", "Pf", "Po",
+        "Sm", "Sc", "Sk", "So",
+        "Zs", "Zl", "Zp",
+        "Cc", "Cf", "Cs", "Co", "Cn"]
+
+    test.case("each sample is the category its abbreviation names")
+    for i in 0..list.len(samples)
+        let c = uclass.category(d, list.get(samples, i))
+        test.assert(uclass.category_abbrev(c) == list.get(names, i))
+        test.assert(uclass.category_named(list.get(names, i)) == Some(c))
+
+    test.case("and the thirty are thirty — no two samples share a category")
+    for i in 0..list.len(names)
+        test.assert(uclass.category_named(list.get(names, i)) != None)
+    test.assert(list.len(names) == 30)
+
+@test
+fn test_a_codepoint_outside_unicode_carries_no_property_at_all() [io]
+    // Not "false because the table says so" — there is no table entry
+    // to consult, and a predicate that invented one would be answering
+    // a question nobody can ask.
+    test.case("below zero and above the range")
+    test.assert(uclass.is_letter(0 - 1) == false)
+    test.assert(uclass.is_letter(0x110000) == false)
+    test.assert(uclass.is_whitespace(0x110000) == false)
+    test.assert(uclass.is_xid_continue(0 - 5) == false)
+    test.assert(uclass.is_ascii(0 - 1) == false)

@@ -270,10 +270,10 @@ fn safe_start(text: Str, at: Int) -> Int
     var i = utbl.cp_start(text, at)
     var found = 0
     for _ in 0..SAFE_WINDOW
-        if i <= 0
-            break
         if safe_here(text, i)
             found = i
+            break
+        if i <= 0
             break
         i = utbl.cp_start(text, i - 1)
     found
@@ -339,13 +339,17 @@ fn wb_before(text: Str, at: Int, skip: Int) -> Int
             left = left - 1
     answer
 
-// The Word_Break class `skip` places at or after `at`, under the same
-// WB4 rule; -1 when the text runs out first.
+// The first Word_Break class at or after `at` that WB4 does not make
+// invisible; -1 when the text runs out first.
+//
+// No `skip` parameter, where `wb_before` has one: the three rules that
+// look FORWARD — WB6, WB7b and WB12 — all look exactly one class past
+// the codepoint being decided, and a parameter no caller varies is a
+// path no test can reach.
 @tier(app)
-fn wb_after(text: Str, at: Int, skip: Int) -> Int
+fn wb_after(text: Str, at: Int) -> Int
     let n = str.len(text)
     var i = at
-    var left = skip
     var answer = 0 - 1
     for _ in 0..n
         if i >= n
@@ -353,10 +357,8 @@ fn wb_after(text: Str, at: Int, skip: Int) -> Int
         let c = wb(utbl.cp_at(text, i))
         i = i + utbl.seq_len(text, i)
         if c != WB_EXTEND and c != WB_FORMAT and c != WB_ZWJ
-            if left == 0
-                answer = c
-                break
-            left = left - 1
+            answer = c
+            break
     answer
 
 // How many regional indicators run up to `at`, for WB15 and WB16.
@@ -410,7 +412,7 @@ fn is_word_boundary(text: Str, at: Int) -> Bool
         else
             let pc = wb_before(text, at, 0)
             let ppc = wb_before(text, at, 1)
-            let nnc = wb_after(text, at + utbl.seq_len(text, at), 0)
+            let nnc = wb_after(text, at + utbl.seq_len(text, at))
             if is_ahletter(pc) and is_ahletter(nc)
                 brk = false
             elif is_ahletter(pc) and is_midletterq(nc) and is_ahletter(nnc)
@@ -868,7 +870,7 @@ fn words(text: Str) -> [UniWord] []
         if at >= n
             break
         at = at + utbl.seq_len(text, at)
-        if at >= n or is_word_boundary(text, at)
+        if is_word_boundary(text, at)
             out = list.push(out, UniWord { start: start, end: at, kind: word_kind(text, start) })
             start = at
     out

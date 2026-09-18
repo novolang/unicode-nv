@@ -1,0 +1,205 @@
+// udata_tests.nv — the three ways of getting the tables, and the claim
+// that they answer the same.
+//
+// `data_full`, `data_compact` and `data_from_pack` are the whole of
+// `udata`'s design: the tables compiled in, the tables cut to the Basic
+// Multilingual Plane, and the tables as bytes the host read.  The third
+// is the one a firmware needs and the one nothing else in the suite
+// exercises, because every other suite takes `data_full` and never
+// notices which side of the branch it is on.
+//
+// THE TEST THAT MATTERS IS THAT THE BRANCH IS INVISIBLE.  Every
+// tier-two lookup asks one question — is this handle carrying a pack? —
+// and answers out of a constant or out of a `[u8]`.  If the two sides
+// ever disagreed, a program that moved its tables to external flash
+// would start normalising differently, which is the worst failure this
+// package has available to it.  So every table is queried through both
+// handles and the answers are compared.
+
+use std.list
+use std.str
+use std.test
+use ucase
+use uclass
+use udata
+use unorm
+
+@test
+fn test_a_pack_answers_exactly_what_the_compiled_in_tables_answer() [io]
+    // One query per tier-two table, through a handle over the caller's
+    // bytes and through the handle over the constants.  The tables are
+    // named in the comments so a failure says which one moved.
+    let full = udata.data_full()
+    let blob = udata.pack_bytes([], full)
+    match udata.data_from_pack(blob)
+        None         =>
+            test.case("the pack this package just wrote is one it can read")
+            test.assert(false)
+        Some(packed) =>
+            test.case("CAT — the general category")
+            test.assert(uclass.category(packed, 0x0041) == CatUppercaseLetter)
+            test.assert(uclass.category(packed, 0x4E16) == uclass.category(full, 0x4E16))
+            test.assert(uclass.category(packed, 0x1F600) == uclass.category(full, 0x1F600))
+
+            test.case("SIMPLE — the one-codepoint mappings")
+            test.assert(ucase.simple_lower(packed, 0x0041) == 0x0061)
+            test.assert(ucase.simple_upper(packed, 0x00DF) == 0x00DF)
+            test.assert(ucase.simple_title(packed, 0x01C6) == 0x01C5)
+            test.assert(ucase.simple_fold(packed, 0x0130) == ucase.simple_fold(full, 0x0130))
+
+            test.case("FULL and FULLPOOL — the mappings that are not one to one")
+            test.assert(list.len(ucase.full_upper(packed, 0x00DF, LANG_ROOT)) == 2)
+            test.assert(ucase.to_upper(packed, "stra\u{00DF}e", LANG_ROOT) == "STRASSE")
+            test.assert(ucase.fold(packed, "\u{00DF}") == "ss")
+
+            test.case("CASEP — Cased and Changes_When_Casefolded")
+            test.assert(ucase.is_cased(packed, 0x0041))
+            test.assert(ucase.is_cased(packed, 0x4E16) == false)
+            test.assert(ucase.changes_when_folded(packed, 0x0041))
+
+            test.case("CCC — the combining classes")
+            test.assert(unorm.combining_class(packed, 0x0323) == 220)
+            test.assert(unorm.is_starter(packed, 0x0041))
+
+            test.case("DECOMP and DECOMPPOOL — the decompositions")
+            test.assert(unorm.normalize(packed, "\u{00C5}", FormNfd) == "A\u{030A}")
+            test.assert(list.len(unorm.decompose_char(packed, 0xFB01, true)) == 2)
+
+            test.case("COMP — the primary composites, keyed on the pair")
+            test.assert(unorm.compose_pair(packed, 0x0041, 0x030A) == Some(0x00C5))
+            test.assert(unorm.compose_pair(packed, 0x0308, 0x0301) == None)
+            test.assert(unorm.normalize(packed, "A\u{030A}", FormNfc) == "\u{00C5}")
+
+            test.case("QC — the quick-check bits")
+            test.assert(unorm.quick_check(packed, "hello", FormNfc) == QcYes)
+            test.assert(unorm.quick_check(packed, "A\u{030A}", FormNfc) == QcNo)
+
+            test.case("and the handle reports the version the blob declared")
+            test.assert(udata.data_version(packed) == UNICODE_VERSION)
+            test.assert(udata.data_covers(packed, 0x1F600))
+
+@test
+fn test_a_blob_that_is_not_a_pack_is_refused_rather_than_indexed_into() [io]
+    // Four refusals, because the alternative to each of them is
+    // reading a stranger's bytes as a table of offsets.
+    let blob = udata.pack_bytes([], udata.data_full())
+
+    test.case("nothing at all")
+    test.assert(udata.data_from_pack([]) == None)
+
+    test.case("a blob that does not open with PACK_MAGIC")
+    test.assert(udata.data_from_pack(broken_at(blob, 0, 0x41)) == None)
+
+    test.case("a format version this release does not know")
+    test.assert(udata.data_from_pack(broken_at(blob, 6, 99)) == None)
+
+    test.case("a declared length that disagrees with what was handed over")
+    test.assert(udata.data_from_pack(broken_at(blob, 10, 7)) == None)
+
+    test.case("a section directory whose lengths do not add up")
+    test.assert(udata.data_from_pack(broken_at(blob, 18, 3)) == None)
+
+    test.case("and something far too short to hold a header")
+    test.assert(udata.data_from_pack([0x4E, 0x56, 0x55]) == None)
+
+// A copy of `blob` with one byte replaced.
+//
+// The corruptions above are one byte each and land on a named field, so
+// a refusal is attributable to the check that made it rather than to
+// the blob being nonsense all over.
+fn broken_at(blob: [u8], at: Int, value: Int) -> [u8]
+    var out = list.slice(blob, 0, at)
+    out = list.push(out, value)
+    list.append(out, list.slice(blob, at + 1, list.len(blob)))
+
+@test
+fn test_the_compact_handle_says_what_it_cannot_answer_for() [io]
+    // `data_compact` is the tier for a program that wants canonical
+    // composition of European text on a device and knows it.  What it
+    // gives up is every astral codepoint, and the honest form of that
+    // is `complete == false` plus `data_covers` answering before the
+    // call rather than a wrong answer after it.
+    let small = udata.data_compact()
+    let full = udata.data_full()
+
+    test.case("it reaches fewer bytes of table, and says how many")
+    test.assert(small.complete == false)
+    test.assert(small.table_bytes < full.table_bytes)
+    test.assert(small.table_bytes > 0)
+    test.assert(udata.data_version(small) == UNICODE_VERSION)
+
+    test.case("inside the Basic Multilingual Plane it agrees with the full tables")
+    test.assert(uclass.category(small, 0x0041) == CatUppercaseLetter)
+    test.assert(unorm.combining_class(small, 0x0323) == 220)
+    test.assert(ucase.simple_lower(small, 0x0041) == 0x0061)
+
+    test.case("and above it every answer is the identity, which is what covers says")
+    test.assert(udata.data_covers(small, 0x1F600) == false)
+    test.assert(uclass.category(small, 0x1F600) == CatUnassigned)
+    test.assert(unorm.combining_class(small, 0x1D167) == 0)
+    test.assert(ucase.simple_upper(small, 0x1D4D0) == 0x1D4D0)
+    test.assert(ucase.is_cased(small, 0x1D4D0) == false)
+    test.assert(list.len(unorm.decompose_char(small, 0x1D160, true)) == 1)
+    test.assert(unorm.compose_pair(small, 0x1D157, 0x1D165) == None)
+    test.assert(unorm.quick_check(small, "\u{1D160}", FormNfkc) == QcYes)
+
+@test
+fn test_pack_bytes_appends_to_the_caller_s_buffer() [io]
+    // The same shape `normalize_into` and `fold_into` have, for the
+    // same reason: a build step writing a pack beside other data owns
+    // the buffer.
+    let full = udata.data_full()
+    let alone = udata.pack_bytes([], full)
+    let after = udata.pack_bytes([0x2A, 0x2A], full)
+
+    test.case("the prefix is kept and the pack follows it")
+    test.assert(list.len(after) == list.len(alone) + 2)
+    test.assert(list.get(after, 0, 0) == 0x2A)
+    test.assert(list.get(after, 2, 0) == str.byte_at_or(PACK_MAGIC, 0, 0))
+
+    test.case("and the declared length is the pack's own, not the buffer's")
+    test.assert(udata.data_from_pack(alone) != None)
+    test.assert(udata.data_from_pack(after) == None)
+
+@test
+fn test_a_header_that_promises_more_than_the_blob_holds_is_refused() [io]
+    // The fourth refusal, and the one a hand-written header reaches
+    // first: the magic is right, the format version is right, the
+    // declared length matches what was handed over — and the version
+    // string it declares runs off the end, so there is no directory to
+    // read.  Indexing into it would be reading a stranger's bytes as
+    // table offsets.
+    var blob: [u8] = []
+    for i in 0..str.len(PACK_MAGIC)
+        blob = list.push(blob, str.byte_at_or(PACK_MAGIC, i, 0))
+    blob = list.push(blob, 1)
+    blob = list.append(blob, [0, 0, 0, 13])
+    blob = list.push(blob, 200)
+    blob = list.push(blob, 0)
+
+    test.case("thirteen bytes that claim a two-hundred-byte version string")
+    test.assert(list.len(blob) == 13)
+    test.assert(udata.data_from_pack(blob) == None)
+
+@test
+fn test_a_pack_answers_none_as_readily_as_it_answers_a_value() [io]
+    // Every search over a packed section has a miss path, and a miss
+    // path that no test walks is a binary search nobody has checked the
+    // end of.  One miss per keyed table.
+    let blob = udata.pack_bytes([], udata.data_full())
+    match udata.data_from_pack(blob)
+        None         =>
+            test.case("the pack reads back")
+            test.assert(false)
+        Some(packed) =>
+            test.case("COMP — a pair that composes to nothing")
+            test.assert(unorm.compose_pair(packed, 0x0041, 0x0042) == None)
+
+            test.case("SIMPLE — a codepoint with no case at all")
+            test.assert(ucase.simple_lower(packed, 0x4E16) == 0x4E16)
+
+            test.case("DECOMP — a codepoint that decomposes to itself")
+            test.assert(list.len(unorm.decompose_char(packed, 0x0041, true)) == 1)
+
+            test.case("FULL — a letter whose uppercase is one codepoint")
+            test.assert(list.len(ucase.full_upper(packed, 0x0061, LANG_ROOT)) == 1)

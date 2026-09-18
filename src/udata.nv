@@ -258,9 +258,9 @@ fn t_value(d: UniData, id: Int, at: Int, w: Int) -> Int
 @tier(app)
 fn t_pool(d: UniData, id: Int, i: Int) -> Int
     if packed(d)
-        utbl.pvalue(d.pack, sect_at(d.pack, id) + i * 3, 3)
+        utbl.pvalue(d.pack, sect_at(d.pack, id) + i * tbl_esz(id), tbl_esz(id))
     else
-        utbl.value(tbl_str(id), i * 3, 3)
+        utbl.value(tbl_str(id), i * tbl_esz(id), tbl_esz(id))
 
 // UniData is the tables that are too big to be free.
 //
