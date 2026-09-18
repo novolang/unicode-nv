@@ -13,11 +13,12 @@ defined over it. [textwrap-nv](https://novo-lang.org/packages/textwrap-nv),
 [fuzzy-nv](https://novo-lang.org/packages/fuzzy-nv) and
 [diff-nv](https://novo-lang.org/packages/diff-nv) are built on it.
 
-**Status: NOT IMPLEMENTED — interface only.** Every function is declared
-with its full signature, but every body is a `todo()` that panics when
-called. The package is published so its design can be reviewed and
-depended on before it is implemented. Version 0.1.0 will be the first
-working release.
+**Status: implemented, experimental.** Every function published as the
+0.0.x interface has a body, and every signature is the one that was
+published. The tables are generated from the Unicode 16.0.0 database.
+One claim made by the interface is not met: the modules in this package
+do not yet give correct answers on a microcontroller, for the reason
+under [Running on a microcontroller](#running-on-a-microcontroller).
 
 ## What it is
 
@@ -95,10 +96,7 @@ fn main() [io]
         println("h may start an identifier")
 ```
 
-Build and test with `novo pkg build` and `novo test`. Today `novo test`
-fails on purpose: every test reaches a
-`not implemented: unicode-nv.<module>.<fn>` panic. The tests are the
-specification the implementation will have to satisfy.
+Build and test with `novo pkg build` and `novo test`.
 
 ## What the package contains
 
@@ -110,6 +108,10 @@ specification the implementation will have to satisfy.
 | `ucase` | Upper, lower and title case under the full rules with the language as a parameter, and case folding for comparison. |
 | `uclass` | The thirty general categories, the UAX #31 identifier predicates, and the character-class predicates a lexer asks for. |
 | `udata` | The handle that carries the large tables, and the three ways of getting one. |
+
+The package also ships four generated modules — `udbcore`, `udbcat`,
+`udbcase` and `udbnorm` — and `utbl`, which searches them. Nothing in
+them is public and a program never names them.
 
 ## How to choose an entry point
 
@@ -138,11 +140,15 @@ terminal emulator driven by an escape-sequence parser never holds the
 string, so this is the surface it uses. Both surfaces run the same
 algorithm.
 
-**`unorm.quick_check` and `unorm.compare` answer without allocating.**
-`quick_check` reports yes, no or maybe from one table lookup per
-codepoint. `compare` decides canonical equivalence without building
-either normalised form. Call `normalize` when the normalised string is
-what you need to keep.
+**`unorm.quick_check` and `unorm.compare` are the cheap answers.**
+`quick_check` reports yes, no or maybe, allocating nothing, from one
+table lookup per codepoint and at most one composition lookup.
+`compare` decides canonical equivalence without building either
+normalised form: when both strings are already in the form it compares
+them as they stand and allocates nothing, and otherwise it normalises
+one starter-run of each side at a time and stops at the first
+difference. Call `normalize` when the normalised string is what you need
+to keep.
 
 **`ucase.fold` is for comparison and `ucase.to_lower` is for display.**
 A caseless match uses `fold` or `eq_fold`. A program that lowercases in
@@ -203,6 +209,9 @@ order to compare has a bug on German input.
     is false. A codepoint a handle does not cover is treated as having
     no mapping and no decomposition, which is the identity answer and
     is indistinguishable from a character that genuinely has none.
+    `data_compact()` does not make the program smaller: it reads the
+    same compiled-in tables and refuses above U+FFFF. A packed table
+    holding only what a program needs is what makes it smaller.
 12. **`udata.data_from_pack` borrows the bytes it is given.** Every
     later lookup reads out of that slice, so the caller keeps it alive
     for as long as the `UniData`. It answers `None` when the blob does
@@ -220,13 +229,23 @@ order to compare has a bug on German input.
     UAX #31 section 2 defines them as the normalisation-closed forms of
     `ID_Start` and `ID_Continue`. They are the right predicates when
     identifiers are compared after NFKC.
+16. **`unorm.compare` orders by the normalised form, not by the input.**
+    "A" with a combining ring composes to "Å", which sorts after "B".
+    Two strings that are canonically equivalent compare equal whichever
+    spelling arrived, which is the property a sort key needs; the order
+    of two that are not equivalent is the order of the forms.
+17. **`unorm.quick_check` may answer `QcNo` where UAX #15's table alone
+    answers maybe.** The table says maybe for a mark that might compose
+    with what precedes it; this checks whether it actually does, with
+    one more lookup and no allocation. `QcYes` and `QcNo` are both
+    certain, and `QcMaybe` still means the full algorithm has to run.
 
 ## Running on a microcontroller
 
 novo-lang lets a package state which of its modules can run on a device
 with no heap allocator, and the compiler checks that claim on every
 build. Here the claim covers `uwidth`, `ugrapheme` and `uclass`'s
-predicates. Those read tables of about 27 KB in total, which is what a
+predicates. Those read tables of about 38 KB in total, which is what a
 device driving a serial console or a small display needs.
 
 `tests/embedded_probe.nv` is that claim as a program. It builds a
@@ -237,31 +256,51 @@ break state machine and the ASCII and scalar predicates.
 novo build --target=nrf52-qemu tests/embedded_probe.nv
 ```
 
-That command was run against this release and produced an executable.
+That command was run against this release and produced an executable of
+77 KB, with the width, break and predicate tables in it and none of the
+other three.
 
-**What the probe proves today is narrower than what it will prove.**
-Every body under `src/` is a `todo()`, so what links is the signatures
-and the types. No table is in the binary yet, so the probe does not yet
-show that 27 KB fits. It shows that nothing in the shape of the surface
-needs an allocator or a host.
+**The executable does not yet give the right answers, and this release
+says so rather than leaving it to be found.** It prints
+`FAIL: unicode-embedded 5`: five of its eight checks pass and three do
+not. The three that fail are the three that read a table. On the
+bare-metal runtime, `str.len` of a text constant that contains a zero
+byte answers the number of bytes before that zero rather than the
+constant's length, and the byte reader refuses every position past it.
+Every table here begins with the entry for U+0000, whose first three
+bytes are zero, so on a device every table reads as empty. The same
+tables are correct on a host, where the suites and the conformance
+files pass. The defect is filed against the toolchain as
+`runtime/embedded-str-len-truncates-at-a-nul`; nothing in this package
+encodes around it, because an alphabet that avoided the zero byte would
+cost a quarter of the table size and would hide the problem from the
+next package to meet it.
 
 `unorm` and `ucase` are outside the claim. Their tables are about
-245 KB generated, which is most of an nRF52's flash. Firmware that
+129 KB generated, which is half of an nRF52's flash. Firmware that
 genuinely needs normalisation reads a packed table out of an external
 flash region and passes the bytes to `udata.data_from_pack`.
 
-| Table | Size | Where it lives |
-| --- | --- | --- |
-| Display width | 4 KB | Compiled in, no argument |
-| Grapheme and word breaks | 11 KB | Compiled in, no argument |
-| Identifier and class predicates | 12 KB | Compiled in, no argument |
-| General category, all thirty | 40 KB | Behind `UniData` |
-| Case mapping, special casing, folding | 55 KB | Behind `UniData` |
-| Normalisation | 190 KB | Behind `UniData` |
+| Table | Size | Entries | Where it lives |
+| --- | --- | --- | --- |
+| Display width | 5,320 bytes | 1,330 | Compiled in, no argument |
+| Grapheme and word breaks | 15,395 bytes | 3,079 | Compiled in, no argument |
+| Identifier and class predicates | 17,990 bytes | 3,598 | Compiled in, no argument |
+| General category, all thirty | 16,396 bytes | 4,099 | Behind `UniData` |
+| Case mapping, special casing, folding | 56,351 bytes | 5,833 | Behind `UniData` |
+| Normalisation | 75,642 bytes | 14,888 | Behind `UniData` |
 
-The sizes are generated from the Unicode 16.0 database. A program that
-never names `udata.data_full` gives the linker no reason to keep the
-last three rows.
+The three compiled-in tables are 38,705 bytes and the three behind
+`UniData` are 148,389 bytes, for 187,094 bytes in total. The sizes are
+generated from the Unicode 16.0.0 database by `tools/gen_tables.py`. A
+program that never names `udata.data_full` gives the linker no reason to
+keep the last three rows.
+
+A table is a text constant holding one byte per byte of data, searched
+by halving. An entry is a three-byte codepoint and one, two or three
+bytes of value; a table records the places a property CHANGES rather
+than one row per codepoint, which is why a property defined over 1.1
+million codepoints fits in a few kilobytes.
 
 ## What is not included
 
@@ -316,61 +355,80 @@ normalisation surfaces, **unicode-width** for the width rules,
 **Python's `unicodedata`** for the category vocabulary, and
 **`wcwidth`** for what terminals are written against.
 
-The expected answers come from the annexes' own test files, which the
-implementation will run whole.
+The expected answers come from the annexes' own test files, which this
+release runs whole.
 
-| File | Reference | Cases |
-| --- | --- | --- |
-| `GraphemeBreakTest.txt` | UAX #29 | about 1100 |
-| `WordBreakTest.txt` | UAX #29 | about 1800 |
-| `NormalizationTest.txt` | UAX #15 | about 19 000 |
-| `SpecialCasing.txt`, `CaseFolding.txt` | UAX #44 | the case mappings |
-| `EastAsianWidth.txt` | UAX #11 | the width classes |
+| File | Reference | Cases | Result |
+| --- | --- | --- | --- |
+| `GraphemeBreakTest.txt` | UAX #29 | 1,093 | all pass |
+| `WordBreakTest.txt` | UAX #29 | 1,826 | all pass |
+| `NormalizationTest.txt` | UAX #15 | 19,965 | all pass |
+
+`NormalizationTest.txt` gives five columns per case — a source and its
+NFC, NFD, NFKC and NFKD — and the conformance clause of UAX #15 is the
+twenty equalities they imply. All twenty are checked on every case,
+which is 399,300 assertions.
 
 ```bash
-novo test --isolate tests/uwidth_tests.nv      #  8 tests: display width
-novo test --isolate tests/ugrapheme_tests.nv   # 12 tests: UAX #29 boundaries
-novo test --isolate tests/unorm_tests.nv       # 11 tests: the four forms
-novo test --isolate tests/ucase_tests.nv       #  9 tests: mapping and folding
-novo test --isolate tests/uclass_tests.nv      #  9 tests: categories and UAX #31
+novo test tests/uwidth_tests.nv      # 11 tests: display width
+novo test tests/ugrapheme_tests.nv   # 18 tests: UAX #29 boundaries
+novo test tests/unorm_tests.nv       # 15 tests: the four forms
+novo test tests/ucase_tests.nv       # 14 tests: mapping and folding
+novo test tests/uclass_tests.nv      # 11 tests: categories and UAX #31
+novo test tests/udata_tests.nv       #  6 tests: the three data handles
+novo test tests/uax29_tests.nv       #  3 tests: the segmentation annex
+novo test tests/uax15_tests.nv       #  3 tests: the normalisation annex
 ```
 
-The suites carry the cases from those files that explain why a rule
-exists, each citing the line it came from in the annex's own notation.
-The generated whole-file suites land with the bodies. The first test in
-`uwidth_tests.nv` asserts that `char_width` is still the one-argument
-function textwrap-nv holds.
+The last two run a committed sample of each annex file — the opening
+cases and then a fixed stride through the rest — so the suite is green
+on a machine that has never downloaded the database. Set `NOVO_UCD` to a
+directory holding the three files and the same suites read them whole:
 
-The tests compile today and fail at run, each on the
-`not implemented: unicode-nv.<module>.<fn>` panic that is its body.
-That is the expected state of an interface release. They turn green one
-at a time as bodies land.
+```bash
+NOVO_UCD=/path/to/ucd novo test tests/uax29_tests.nv
+NOVO_UCD=/path/to/ucd novo test tests/uax15_tests.nv
+```
+
+Measured line coverage over `src/` is 100%: 1,065 instrumented
+statements, 1,065 executed, no exclusion marked anywhere.
+
+`tools/alloc_scan.sh` compiles `tests/alloc_probe.nv` and reads the
+emitted code for calls to the allocator. It reports 57 functions on the
+width, break and predicate path and no allocation in any of them.
+
+## Reproducing the tables
+
+`tools/gen_tables.py` writes the four generated modules under `src/`
+from the database files, and `tools/gen_conformance.py` writes the
+committed samples into the two annex suites. Neither downloads
+anything; both take a directory.
+
+```bash
+curl -O https://www.unicode.org/Public/16.0.0/ucd/UnicodeData.txt      # and the rest
+python3 tools/gen_tables.py /path/to/ucd
+python3 tools/gen_conformance.py /path/to/ucd
+```
+
+The files each script reads are named at the top of it. The database
+files themselves are not in this repository: they are 8 MB of text the
+Unicode Consortium publishes, and a copy here would be a second
+original.
 
 ## Implementation status
 
+Everything published as the 0.0.x interface is implemented. What is not
+yet true of this release is one claim rather than one function:
+
 | Item | Implemented |
 | --- | --- |
-| `udata.UNICODE_VERSION`, `.PACK_MAGIC` | yes (they are constants) |
-| `ucase.LANG_ROOT`, `.LANG_TURKISH`, `.LANG_AZERI`, `.LANG_LITHUANIAN` | yes (they are constants) |
-| `ugrapheme.BREAK_START` | yes (it is a constant) |
-| `uwidth.char_width`, `.char_width_cjk`, `.str_width`, `.cluster_width`, `.text_width`, `.fit_prefix` | no |
-| `uwidth.east_asian_width`, `.is_wide`, `.is_zero_width`, `.is_ambiguous` | no |
-| `ugrapheme.break_state`, `.break_step` | no |
-| `ugrapheme.cursor`, `.cursor_at`, `.cursor_next`, `.cursor_advance`, `.cursor_done` | no |
-| `ugrapheme.next_boundary`, `.prev_boundary`, `.is_boundary`, `.count`, `.nth`, `.clusters`, `.truncate_clusters` | no |
-| `ugrapheme.next_word`, `.prev_word`, `.words` | no |
-| `unorm.normalize`, `.normalize_into`, `.quick_check`, `.is_normalized` | no |
-| `unorm.compare`, `.equivalent`, `.stream_boundary` | no |
-| `unorm.combining_class`, `.decompose_char`, `.compose_pair`, `.is_starter` | no |
-| `ucase.to_lower`, `.to_upper`, `.to_title`, `.fold`, `.eq_fold` | no |
-| `ucase.to_lower_into`, `.to_upper_into`, `.fold_into` | no |
-| `ucase.simple_lower`, `.simple_upper`, `.simple_title`, `.simple_fold`, `.full_lower`, `.full_upper` | no |
-| `ucase.is_cased`, `.changes_when_folded` | no |
-| `uclass.category`, `.category_abbrev`, `.category_named` | no |
-| `uclass.is_letter`, `.is_digit`, `.is_alphanumeric`, `.is_whitespace`, `.is_control`, `.is_mark`, `.is_punctuation`, `.is_symbol`, `.is_uppercase`, `.is_lowercase` | no |
-| `uclass.is_id_start`, `.is_id_continue`, `.is_xid_start`, `.is_xid_continue` | no |
-| `uclass.is_ascii`, `.is_ascii_digit`, `.is_ascii_alpha`, `.is_ascii_whitespace`, `.is_valid_scalar` | no |
-| `udata.data_full`, `.data_compact`, `.data_from_pack`, `.pack_bytes`, `.data_version`, `.data_covers` | no |
+| `uwidth` — width, the East Asian property, fitting a prefix | yes |
+| `ugrapheme` — cluster boundaries, the incremental machine, word boundaries | yes |
+| `unorm` — the four forms, the quick check, comparison, streaming | yes |
+| `ucase` — the full and simple mappings, folding, the language rules | yes |
+| `uclass` — the thirty categories, UAX #31, the class predicates | yes |
+| `udata` — the compiled-in tables, the compact tier, the packed form | yes |
+| Correct answers on a microcontroller | no — see [Running on a microcontroller](#running-on-a-microcontroller) |
 
 ## Licence
 

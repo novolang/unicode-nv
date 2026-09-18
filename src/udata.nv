@@ -317,14 +317,22 @@ fn data_full() -> UniData []
 
 // data_compact is the same tables cut to the Basic Multilingual Plane.
 //
-// Roughly a third of the size, and the honest description of what it
-// gives up is: an astral codepoint — emoji, the historic scripts, the
-// mathematical alphanumerics — is left exactly as it was found rather
-// than normalised or case-mapped.  `complete` is false, so a caller
-// that must not silently do that can check.
+// The honest description of what it gives up is: an astral codepoint —
+// emoji, the historic scripts, the mathematical alphanumerics — is left
+// exactly as it was found rather than normalised or case-mapped.
+// `complete` is false, so a caller that must not silently do that can
+// check.  `table_bytes` answers the part of the tables this handle
+// reaches, which is about four fifths of the whole.
 //
-// For the program that wants canonical composition of European text on
-// a device, and knows it.
+// WHAT IT DOES NOT DO IS MAKE THE BINARY SMALLER.  The handle reads the
+// same constants `data_full` reads and refuses above U+FFFF; there is
+// no separately generated smaller table, so a program that links this
+// function links all of them.  A program that needs a smaller IMAGE
+// passes `data_from_pack` a blob holding only what it needs, which is
+// what the packed form is for.
+//
+// For the program that wants canonical composition of European text and
+// must not silently mis-handle an emoji.
 pub @tier(app)
 fn data_compact() -> UniData []
     UniData { version: UNICODE_VERSION,

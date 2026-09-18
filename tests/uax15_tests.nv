@@ -42,10 +42,7 @@ const NORMALIZATION_CASES = "1E0A;1E0A;0044 0307;1E0A;0044 0307;\n1E0C;1E0C;0044
 // The five columns of one case, as the strings they describe.
 fn columns(line: Str) -> [Str]
     let fields = str.split(line, ";")
-    var out: [Str] = []
-    for i in 0..5
-        out = list.push(out, cps_of(list.get(fields, i, "")))
-    out
+    list.map(list.slice(fields, 0, 5), cps_of)
 
 // A column — space-separated hex codepoints — as a string.
 fn cps_of(field: Str) -> Str

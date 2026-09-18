@@ -1,30 +1,31 @@
 [package]
 name        = "unicode-nv"
-version     = "0.0.2"
-description = "The Unicode character database as a library: grapheme cluster segmentation by UAX #29 with an incremental state machine for a terminal that receives one codepoint at a time, display width by UAX #11 as the exact `fn(Int) -> Int` textwrap-nv already takes, the four normalisation forms, full case mapping and folding with the language-specific rules, and the category and identifier predicates a tokenizer wants.  The tables are tiered: width and breaks are always compiled in, normalisation and case mapping arrive as a value the caller names.  Interface only — every body is a todo()."
+version     = "0.1.0"
+description = "The Unicode character database as a library: grapheme cluster segmentation by UAX #29 with an incremental state machine for a terminal that receives one codepoint at a time, display width by UAX #11 as the exact `fn(Int) -> Int` textwrap-nv already takes, the four normalisation forms, full case mapping and folding with the language-specific rules, and the category and identifier predicates a tokenizer wants.  The tables are generated from Unicode 16.0.0 and tiered: width and breaks are always compiled in, normalisation and case mapping arrive as a value the caller names."
 license     = "Apache-2.0"
 
-# An INTERFACE release: every `pub fn` body is a `todo()`, so the
-# signatures and the effect rows are published and nothing is
-# implemented.  `novo pkg publish` recognises the shape and requires
-# both the draft stability and the 0.0.x version; the first
-# implementation is the 0.1.0 published over it.
-stability   = "draft"
+# The first implementation of the interface published as 0.0.1.  Every
+# `pub fn` has a body and every signature is the one that was
+# published; `experimental` says the surface may still move before 1.0.
+stability   = "experimental"
 
 # `core`.  Every answer here is a table lookup over a codepoint the
 # caller already holds: nothing is read, nothing is written, and the
 # largest tables arrive either as constants in the binary or as bytes
 # the host handed over.  That last one is the whole reason
 # `udata.data_from_pack` takes a `[u8]` rather than a path — a core
-# package cannot open a file, and the tables are 245 KB.
+# package cannot open a file, and the tables are 183 KB.
 layer       = "core"
 
 category    = "text"
 
-tags        = ["unicode", "grapheme", "segmentation", "uax29", "width", "east-asian-width", "normalization", "nfc", "nfd", "case-folding", "uax31", "sans-io"]
+tags        = ["unicode", "grapheme", "segmentation", "uax29", "width", "east-asian-width", "normalization", "nfc", "nfd", "case-folding", "uax31", "uax15", "uax11", "sans-io"]
 repository  = "https://github.com/novolang/unicode-nv"
 maintainers = ["novo-lang"]
-novo        = ">= 0.8.9"
+# The oldest released `novo` there is evidence for, which is the one
+# that built and tested these bytes.  The package uses `@value` structs,
+# `str.byte_at_or` at the embedded tier and `bytes.to_byte_list`.
+novo        = ">= 0.9.1"
 
 # A library: no `main`, so `novo pkg build` type-checks and
 # effect-checks every module under `src/` and writes no binary.

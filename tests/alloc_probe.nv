@@ -20,7 +20,6 @@
 // The answers are printed rather than checked: the five suites own
 // correctness.  This one is here to be read as text.
 
-use std.str
 use uclass
 use ugrapheme
 use uwidth

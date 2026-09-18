@@ -12,6 +12,8 @@ APIDOC.md
 # the line is here for when it grows a `main`.
 /unicode-nv
 
-# Build outputs of a dependency-free package.  There is no lock to
-# commit: `[dependencies]` is empty.
-novo.lock
+# novo.lock is NOT ignored.  `docs/publishing.md` says to commit it, for
+# a library as much as for an application: it never ships, and it is
+# what makes a build reproducible.  This package declares no
+# dependencies, so the toolchain writes none — the absence of the file
+# is the empty lock.

@@ -169,9 +169,7 @@ fn test_a_header_that_promises_more_than_the_blob_holds_is_refused() [io]
     // string it declares runs off the end, so there is no directory to
     // read.  Indexing into it would be reading a stranger's bytes as
     // table offsets.
-    var blob: [u8] = []
-    for i in 0..str.len(PACK_MAGIC)
-        blob = list.push(blob, str.byte_at_or(PACK_MAGIC, i, 0))
+    var blob = list.map(list.range(0, str.len(PACK_MAGIC)), magic_byte)
     blob = list.push(blob, 1)
     blob = list.append(blob, [0, 0, 0, 13])
     blob = list.push(blob, 200)
@@ -203,3 +201,11 @@ fn test_a_pack_answers_none_as_readily_as_it_answers_a_value() [io]
 
             test.case("FULL — a letter whose uppercase is one codepoint")
             test.assert(list.len(ucase.full_upper(packed, 0x0061, LANG_ROOT)) == 1)
+
+// The `n`th byte of `PACK_MAGIC`.
+//
+// A named function rather than a lambda, because a lambda that
+// captures nothing still has to be a shape `list.map` lowers for and a
+// top-level function always is.
+fn magic_byte(n: Int) -> Int
+    str.byte_at_or(PACK_MAGIC, n, 0)
