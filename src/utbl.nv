@@ -1,0 +1,195 @@
+// utbl.nv — how a table is read, and how UTF-8 is walked.
+//
+// INTERNAL.  Nothing here is `pub`: it is the one search and the one
+// decoder every module in this package is written on, kept in one file
+// so there is one place where an off-by-one in a binary search could
+// live.
+//
+// A TABLE IS A STRING CONSTANT, and that is the decision this file
+// exists to serve.  A `const` list is inlined at every use site
+// (docs/language/guide.md, "Constants"), so a four-thousand-entry list
+// would be copied into every call; a `const` Str is a pointer to static
+// data.  `str.len` and `str.byte_at_or` are the two entries the
+// embedded tier admits that look inside one — they lower to a bounds
+// check, a load and a select, with no allocation and no runtime call —
+// so the same table serves a host program and a Cortex-M with no heap.
+// That is why `uwidth.char_width` can be the bare `fn(Int) -> Int`
+// textwrap-nv holds AND run on a device.
+//
+// TWO SHAPES, because a property is one of two things:
+//
+//   COVERING — every codepoint has a value, so the table records the
+//   places the value CHANGES.  `cover` finds the last entry whose key
+//   is at or below the codepoint.  The first entry is always U+0000, so
+//   the search cannot miss.
+//
+//   KEYED — almost no codepoint has an entry, so the table records the
+//   ones that do.  `find` is an exact match and answers -1 for a miss.
+//
+// A key is three bytes big-endian, which reaches U+10FFFF.  A value is
+// however many bytes the entry has left, also big-endian, and each
+// table's entry size is a constant beside it.
+
+use std.str
+
+// The three-byte key at byte offset `at`.
+@tier(embedded)
+fn key(t: Str, at: Int) -> Int
+    (str.byte_at_or(t, at, 0) << 16)
+        | (str.byte_at_or(t, at + 1, 0) << 8)
+        | str.byte_at_or(t, at + 2, 0)
+
+// The `w`-byte big-endian value at byte offset `at`.
+@tier(embedded)
+fn value(t: Str, at: Int, w: Int) -> Int
+    var v = 0
+    for i in 0..w
+        v = (v << 8) | str.byte_at_or(t, at + i, 0)
+    v
+
+// How many entries a table of `esz`-byte entries holds.
+@tier(embedded)
+fn entries(t: Str, esz: Int) -> Int
+    str.len(t) / esz
+
+// The number of halvings a binary search over any table here can need.
+//
+// The tier that will not run an unbounded loop wants the bound written
+// where the checker can read it (SPEC §12.4), and a binary search has
+// one: 24 halvings reach any table of up to sixteen million entries,
+// where the largest table in this package holds six thousand.  The
+// search still leaves early — the bound is a ceiling, not a step count.
+const STEPS = 24
+
+// The value of the entry covering `cp`.
+@tier(embedded)
+fn cover(t: Str, esz: Int, cp: Int) -> Int
+    var lo = 0
+    var hi = entries(t, esz) - 1
+    var found = 0
+    for _ in 0..STEPS
+        if lo > hi
+            break
+        let mid = lo + (hi - lo) / 2
+        if key(t, mid * esz) <= cp
+            found = mid
+            lo = mid + 1
+        else
+            hi = mid - 1
+    value(t, found * esz + 3, esz - 3)
+
+// The byte offset of the entry keyed `cp`, or -1 when there is none.
+@tier(embedded)
+fn find(t: Str, esz: Int, cp: Int) -> Int
+    var lo = 0
+    var hi = entries(t, esz) - 1
+    var at = 0 - 1
+    for _ in 0..STEPS
+        if lo > hi
+            break
+        let mid = lo + (hi - lo) / 2
+        let k = key(t, mid * esz)
+        if k == cp
+            at = mid * esz
+            break
+        elif k < cp
+            lo = mid + 1
+        else
+            hi = mid - 1
+    at
+
+// The byte offset of the entry keyed by the PAIR `(a, b)`, or -1.
+//
+// For the composition table, whose key is a starter and a combining
+// codepoint rather than one codepoint — six bytes, compared as one
+// number so the search is the same search.
+@tier(embedded)
+fn find_pair(t: Str, esz: Int, a: Int, b: Int) -> Int
+    var lo = 0
+    var hi = entries(t, esz) - 1
+    var at = 0 - 1
+    for _ in 0..STEPS
+        if lo > hi
+            break
+        let mid = lo + (hi - lo) / 2
+        let off = mid * esz
+        let k = key(t, off)
+        let k2 = key(t, off + 3)
+        if k == a and k2 == b
+            at = off
+            break
+        elif k < a or (k == a and k2 < b)
+            lo = mid + 1
+        else
+            hi = mid - 1
+    at
+
+// How many bytes the UTF-8 sequence starting at `i` occupies.
+//
+// One for a byte that cannot start a sequence, and one for a sequence
+// the string is too short to hold — the same rule `str.chars` follows,
+// which is what keeps a walk over invalid bytes finite and lets
+// `str.join(str.chars(s), "")` be `s` for every input.
+@tier(embedded)
+fn seq_len(text: Str, i: Int) -> Int
+    let b = str.byte_at_or(text, i, 0)
+    var n = 1
+    if b >= 0xF0 and b <= 0xF4
+        n = 4
+    elif b >= 0xE0 and b <= 0xEF
+        n = 3
+    elif b >= 0xC2 and b <= 0xDF
+        n = 2
+    if i + n > str.len(text)
+        n = 1
+    var bad = false
+    for j in 1..n
+        let c = str.byte_at_or(text, i + j, 0)
+        if c < 0x80 or c > 0xBF
+            bad = true
+    if bad
+        n = 1
+    n
+
+// The codepoint whose UTF-8 encoding starts at byte `i`.
+//
+// The raw byte when the sequence is not valid UTF-8, so a scan over
+// arbitrary bytes still makes progress and still reports something the
+// caller can act on.
+@tier(embedded)
+fn cp_at(text: Str, i: Int) -> Int
+    let n = seq_len(text, i)
+    let b = str.byte_at_or(text, i, 0)
+    if n == 1
+        b
+    elif n == 2
+        ((b & 0x1F) << 6) | (str.byte_at_or(text, i + 1, 0) & 0x3F)
+    elif n == 3
+        ((b & 0x0F) << 12)
+            | ((str.byte_at_or(text, i + 1, 0) & 0x3F) << 6)
+            | (str.byte_at_or(text, i + 2, 0) & 0x3F)
+    else
+        ((b & 0x07) << 18)
+            | ((str.byte_at_or(text, i + 1, 0) & 0x3F) << 12)
+            | ((str.byte_at_or(text, i + 2, 0) & 0x3F) << 6)
+            | (str.byte_at_or(text, i + 3, 0) & 0x3F)
+
+// The byte offset of the codepoint boundary at or before `at`.
+//
+// A continuation byte is 10xxxxxx, so walking back over them reaches
+// the lead byte in at most three steps.
+@tier(embedded)
+fn cp_start(text: Str, at: Int) -> Int
+    var i = at
+    if i < 0
+        i = 0
+    if i > str.len(text)
+        i = str.len(text)
+    for _ in 0..3
+        if i == 0
+            break
+        let b = str.byte_at_or(text, i, 0)
+        if b < 0x80 or b >= 0xC0
+            break
+        i = i - 1
+    i

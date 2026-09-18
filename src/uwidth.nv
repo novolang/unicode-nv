@@ -1,7 +1,5 @@
 // uwidth.nv — how many terminal cells a codepoint occupies.
 //
-// Every body here is a `todo()`; the signatures are the design.
-//
 // THIS IS THE FUNCTION THE PACKAGE EXISTS FOR.  textwrap-nv is
 // published, and it takes the width of a codepoint as a parameter
 // because unicode-nv did not exist when it was written:
@@ -35,6 +33,71 @@
 // terminals agree.  It is UAX #11 plus the two categories every
 // implementation adds to it, which is what `wcwidth` answers and what
 // every terminal is written against.
+//
+// WHERE THE ANSWER COMES FROM.  `udbcore.WIDTH` is a covering table
+// generated from `EastAsianWidth.txt` and `UnicodeData.txt` by
+// `tools/gen_tables.py`: 5 KB, one entry per place the answer changes,
+// searched by `utbl.cover`.  Every function in this module is one such
+// search and a handful of comparisons, so all of them run at
+// `@tier(embedded)` and none of them allocates.
+
+use std.str
+use udbcore
+use ugrapheme
+use utbl
+
+// The East_Asian_Width index the table stores, in the declaration
+// order of `UniEastAsian` — the generator writes the same order, so
+// the byte IS the arm.
+const EA_MASK = 0x07
+
+// The bit `udbcore.WIDTH` sets for a codepoint that occupies no cell.
+const EA_ZERO = 0x08
+
+// The width class of `ch`, as the table byte.
+//
+// A codepoint outside Unicode has no entry and no meaning; it answers
+// Neutral, which is one cell, because that is what a terminal draws
+// for the replacement glyph it will put there.
+@tier(embedded)
+fn class_of(ch: Int) -> Int
+    if ch < 0 or ch > 0x10FFFF
+        0
+    else
+        utbl.cover(udbcore.WIDTH, udbcore.WIDTH_ESZ, ch)
+
+// The width of the cluster lying in `text` over the bytes
+// `[start, end)`.
+//
+// THE WIDEST CODEPOINT DECIDES, not the sum, and that is what makes
+// this different from `str_width`: a family emoji is a wide pictograph,
+// a joiner and three more pictographs, and a terminal places all of it
+// in the two cells the first one asked for.
+//
+// THE ONE EXCEPTION IS A FLAG.  Two regional indicators are each
+// East_Asian_Width=N — one cell — and a terminal draws the pair in two.
+// Neither the sum nor the maximum gets that right on its own, so the
+// pair is named: a cluster that opens with two of them is two cells,
+// whatever else follows.
+@tier(embedded)
+fn range_width(text: Str, start: Int, end: Int) -> Int
+    var widest = 0
+    var regionals = 0
+    var i = start
+    for _ in 0..(end - start)
+        if i >= end
+            break
+        let ch = utbl.cp_at(text, i)
+        if ugrapheme.is_regional_indicator(ch)
+            regionals = regionals + 1
+        let w = char_width(ch)
+        if w > widest
+            widest = w
+        i = i + utbl.seq_len(text, i)
+    if regionals >= 2
+        2
+    else
+        widest
 
 // UniEastAsian is the East Asian Width property of UAX #11.
 //
@@ -77,8 +140,15 @@ pub enum UniEastAsian
 //     println(str.from_int(uwidth.char_width(0x4E16)))    // 2 — an ideograph
 //     println(str.from_int(uwidth.char_width(0x0301)))    // 0 — a combining acute
 // ```
+@tier(embedded)
 pub fn char_width(ch: Int) -> Int []
-    todo("unicode-nv.uwidth.char_width")
+    let c = class_of(ch)
+    if (c & EA_ZERO) != 0
+        0
+    elif (c & EA_MASK) == 2 or (c & EA_MASK) == 3
+        2
+    else
+        1
 
 // char_width_cjk is `char_width` with the Ambiguous class counted as
 // two cells.
@@ -88,8 +158,15 @@ pub fn char_width(ch: Int) -> Int []
 // because a flag would not fit in a `WrapWidth`, and because a
 // program that needs this knows it at start-up and never changes its
 // mind mid-line.
+@tier(embedded)
 pub fn char_width_cjk(ch: Int) -> Int []
-    todo("unicode-nv.uwidth.char_width_cjk")
+    let c = class_of(ch)
+    if (c & EA_ZERO) != 0
+        0
+    elif (c & EA_MASK) == 5
+        2
+    else
+        char_width(ch)
 
 // str_width is the width of a whole string, summed over its
 // codepoints.
@@ -101,8 +178,16 @@ pub fn char_width_cjk(ch: Int) -> Int []
 // `cluster_width` is the function that gets those right; this one is
 // what a caller wants for text that has no such sequences in it, and
 // it is faster because it never has to segment.
+@tier(embedded)
 pub fn str_width(text: Str) -> Int []
-    todo("unicode-nv.uwidth.str_width")
+    var total = 0
+    var i = 0
+    for _ in 0..str.len(text)
+        if i >= str.len(text)
+            break
+        total = total + char_width(utbl.cp_at(text, i))
+        i = i + utbl.seq_len(text, i)
+    total
 
 // cluster_width is the width of one grapheme cluster.
 //
@@ -114,8 +199,9 @@ pub fn str_width(text: Str) -> Int []
 // A caller with a string rather than a single cluster walks
 // `ugrapheme.cursor` and calls this per cluster; `text_width` below
 // does exactly that, and is the function most callers want.
+@tier(embedded)
 pub fn cluster_width(cluster: Str) -> Int []
-    todo("unicode-nv.uwidth.cluster_width")
+    range_width(cluster, 0, str.len(cluster))
 
 // text_width is the width of a string, measured cluster by cluster.
 //
@@ -123,8 +209,17 @@ pub fn cluster_width(cluster: Str) -> Int []
 // with `ugrapheme` and sums `cluster_width`, so every emoji sequence
 // counts once.  Use it when the text can contain anything; use
 // `str_width` when it cannot and the loop is hot.
+@tier(embedded)
 pub fn text_width(text: Str) -> Int []
-    todo("unicode-nv.uwidth.text_width")
+    var total = 0
+    var at = 0
+    for _ in 0..str.len(text)
+        if at >= str.len(text)
+            break
+        let end = ugrapheme.next_boundary(text, at)
+        total = total + range_width(text, at, end)
+        at = end
+    total
 
 // fit_prefix is how many BYTES of `text` fit in `columns` cells.
 //
@@ -137,19 +232,42 @@ pub fn text_width(text: Str) -> Int []
 // truncation that let it would produce a line one column too long,
 // which is the bug that makes a status bar wrap and scroll the whole
 // screen.
+@tier(embedded)
 pub fn fit_prefix(text: Str, columns: Int) -> Int []
-    todo("unicode-nv.uwidth.fit_prefix")
+    var used = 0
+    var at = 0
+    var fits = 0
+    for _ in 0..str.len(text)
+        if at >= str.len(text)
+            break
+        let end = ugrapheme.next_boundary(text, at)
+        let w = range_width(text, at, end)
+        if used + w > columns
+            break
+        used = used + w
+        at = end
+        fits = end
+    fits
 
 // east_asian_width is the UAX #11 property itself.
 //
 // For a caller writing its own policy for the ambiguous class, or
 // reporting why a string measured the way it did.
+@tier(embedded)
 pub fn east_asian_width(ch: Int) -> UniEastAsian []
-    todo("unicode-nv.uwidth.east_asian_width")
+    match class_of(ch) & EA_MASK
+        1 => EaNarrow
+        2 => EaWide
+        3 => EaFullwidth
+        4 => EaHalfwidth
+        5 => EaAmbiguous
+        _ => EaNeutral
 
 // is_wide answers whether the codepoint is Wide or Fullwidth.
+@tier(embedded)
 pub fn is_wide(ch: Int) -> Bool []
-    todo("unicode-nv.uwidth.is_wide")
+    let e = class_of(ch) & EA_MASK
+    e == 2 or e == 3
 
 // is_zero_width answers whether the codepoint occupies no cell.
 //
@@ -160,8 +278,9 @@ pub fn is_wide(ch: Int) -> Bool []
 // it is not text either, and a caller measuring text that might
 // contain one wants to know rather than to have it silently measure
 // as nothing.
+@tier(embedded)
 pub fn is_zero_width(ch: Int) -> Bool []
-    todo("unicode-nv.uwidth.is_zero_width")
+    (class_of(ch) & EA_ZERO) != 0
 
 // is_ambiguous answers whether the codepoint's width depends on the
 // terminal's locale.
@@ -169,5 +288,6 @@ pub fn is_zero_width(ch: Int) -> Bool []
 // The question a program asks once, at start-up, to decide between
 // `char_width` and `char_width_cjk` — or to warn that its output will
 // be misaligned on somebody else's terminal.
+@tier(embedded)
 pub fn is_ambiguous(ch: Int) -> Bool []
-    todo("unicode-nv.uwidth.is_ambiguous")
+    (class_of(ch) & EA_MASK) == 5

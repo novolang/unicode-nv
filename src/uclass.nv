@@ -1,7 +1,5 @@
 // uclass.nv — what kind of thing a codepoint is.
 //
-// Every body here is a `todo()`; the signatures are the design.
-//
 // THE TIER SPLIT IS VISIBLE IN THE SIGNATURES, and that is on
 // purpose.  The predicates a lexer's inner loop asks — is this
 // whitespace, is this a control, can this start an identifier — read
@@ -26,7 +24,155 @@
 // Unicode ones — they answer a different, narrower question, and a
 // caller that uses them on non-ASCII text is not making an
 // approximation, it is getting `false`.
+//
+// WHERE THE ANSWERS COME FROM.  The predicates read `udbcore.PRED`,
+// a 18 KB covering table of fourteen bits per range generated from
+// `UnicodeData.txt`, `PropList.txt` and `DerivedCoreProperties.txt`;
+// `category` reads `udbcat.CAT`, which is 16 KB on its own and is the
+// reason that one function takes a handle.  Both are searched by
+// `utbl.cover`, so every function here is one binary search and a mask.
+use std.str
+use udbcat
+use udbcore
 use udata
+use utbl
+
+// The bit each predicate reads out of `udbcore.PRED`, in the order the
+// generator writes them.
+const P_LETTER = 1 << 0
+
+// Nd alone — the decimal digits, which is what a number parser means.
+const P_DECIMAL = 1 << 1
+
+// Nd, Nl and No together.
+const P_NUMBER = 1 << 2
+
+// The White_Space property, which is not the Z categories.
+const P_SPACE = 1 << 3
+
+// Cc — the C0 and C1 controls.
+const P_CONTROL = 1 << 4
+
+// Mn, Mc or Me.
+const P_MARK = 1 << 5
+
+// Any of the P categories.
+const P_PUNCT = 1 << 6
+
+// Any of the S categories.
+const P_SYMBOL = 1 << 7
+
+// The Uppercase property, which is wider than Lu.
+const P_UPPER = 1 << 8
+
+// The Lowercase property, which is wider than Ll.
+const P_LOWER = 1 << 9
+
+// UAX #31's ID_Start.
+const P_ID_START = 1 << 10
+
+// UAX #31's ID_Continue.
+const P_ID_CONTINUE = 1 << 11
+
+// XID_Start — ID_Start closed under NFKC.
+const P_XID_START = 1 << 12
+
+// XID_Continue.
+const P_XID_CONTINUE = 1 << 13
+
+// Whether `ch` carries the predicate bits `mask`.
+//
+// A codepoint outside Unicode carries none of them, which is the same
+// answer an unassigned one inside it gets — there is no property to
+// have, and a predicate that said otherwise would be inventing one.
+@tier(embedded)
+fn has(ch: Int, mask: Int) -> Bool
+    if ch < 0 or ch > 0x10FFFF
+        false
+    else
+        (utbl.cover(udbcore.PRED, udbcore.PRED_ESZ, ch) & mask) != 0
+
+// The thirty abbreviations, in the declaration order of `UniCategory`.
+//
+// One string rather than thirty, because `category_named` searches it
+// and `category_abbrev` indexes it, and two spellings of one list is
+// one place for them to disagree.
+const ABBREVS = "LuLlLtLmLoMnMcMeNdNlNoPcPdPsPePiPfPoSmScSkSoZsZlZpCcCfCsCoCn"
+
+// How many categories `ABBREVS` holds.
+const CAT_COUNT = 30
+
+// The declaration index of a `UniCategory`.
+//
+// The pair of `category_of`, and the reason both exist is that the
+// table stores an index: a round trip through the enum has to be
+// exactly the generator's order or every codepoint is relabelled.
+fn cat_index(c: UniCategory) -> Int
+    match c
+        CatUppercaseLetter => 0
+        CatLowercaseLetter => 1
+        CatTitlecaseLetter => 2
+        CatModifierLetter => 3
+        CatOtherLetter => 4
+        CatNonspacingMark => 5
+        CatSpacingMark => 6
+        CatEnclosingMark => 7
+        CatDecimalNumber => 8
+        CatLetterNumber => 9
+        CatOtherNumber => 10
+        CatConnectorPunctuation => 11
+        CatDashPunctuation => 12
+        CatOpenPunctuation => 13
+        CatClosePunctuation => 14
+        CatInitialPunctuation => 15
+        CatFinalPunctuation => 16
+        CatOtherPunctuation => 17
+        CatMathSymbol => 18
+        CatCurrencySymbol => 19
+        CatModifierSymbol => 20
+        CatOtherSymbol => 21
+        CatSpaceSeparator => 22
+        CatLineSeparator => 23
+        CatParagraphSeparator => 24
+        CatControl => 25
+        CatFormat => 26
+        CatSurrogate => 27
+        CatPrivateUse => 28
+        _ => 29
+
+// The `UniCategory` a declaration index names.
+fn cat_of_index(i: Int) -> UniCategory
+    match i
+        0 => CatUppercaseLetter
+        1 => CatLowercaseLetter
+        2 => CatTitlecaseLetter
+        3 => CatModifierLetter
+        4 => CatOtherLetter
+        5 => CatNonspacingMark
+        6 => CatSpacingMark
+        7 => CatEnclosingMark
+        8 => CatDecimalNumber
+        9 => CatLetterNumber
+        10 => CatOtherNumber
+        11 => CatConnectorPunctuation
+        12 => CatDashPunctuation
+        13 => CatOpenPunctuation
+        14 => CatClosePunctuation
+        15 => CatInitialPunctuation
+        16 => CatFinalPunctuation
+        17 => CatOtherPunctuation
+        18 => CatMathSymbol
+        19 => CatCurrencySymbol
+        20 => CatModifierSymbol
+        21 => CatOtherSymbol
+        22 => CatSpaceSeparator
+        23 => CatLineSeparator
+        24 => CatParagraphSeparator
+        25 => CatControl
+        26 => CatFormat
+        27 => CatSurrogate
+        28 => CatPrivateUse
+        _ => CatUnassigned
 
 // UniCategory is Unicode's general category.
 //
@@ -107,7 +253,10 @@ pub enum UniCategory
 // caller tells those apart, and it has to ask before rather than
 // after.
 pub fn category(d: udata.UniData, ch: Int) -> UniCategory []
-    todo("unicode-nv.uclass.category")
+    if udata.data_covers(d, ch) == false
+        CatUnassigned
+    else
+        cat_of_index(utbl.cover(udbcat.CAT, udbcat.CAT_ESZ, ch))
 
 // category_abbrev is the two-letter abbreviation — "Lu", "Nd", "Zs".
 //
@@ -115,7 +264,7 @@ pub fn category(d: udata.UniData, ch: Int) -> UniCategory []
 // matching a regular expression's `\p{Lu}` against a name it was
 // given as text.
 pub fn category_abbrev(c: UniCategory) -> Str []
-    todo("unicode-nv.uclass.category_abbrev")
+    str.slice(ABBREVS, cat_index(c) * 2, cat_index(c) * 2 + 2)
 
 // category_named is the category an abbreviation names.
 //
@@ -123,14 +272,19 @@ pub fn category_abbrev(c: UniCategory) -> Str []
 // `category_abbrev`, so a `\p{...}` in a pattern can be resolved once
 // at compile time rather than compared as text per character.
 pub fn category_named(abbrev: Str) -> ?UniCategory []
-    todo("unicode-nv.uclass.category_named")
+    var found: ?UniCategory = None
+    for i in 0..CAT_COUNT
+        if str.slice(ABBREVS, i * 2, i * 2 + 2) == abbrev
+            found = Some(cat_of_index(i))
+    found
 
 // is_letter answers whether the codepoint is any of Lu, Ll, Lt, Lm,
 // Lo.
 //
 // No `UniData`: the letter ranges are their own compiled-in list.
+@tier(embedded)
 pub fn is_letter(ch: Int) -> Bool []
-    todo("unicode-nv.uclass.is_letter")
+    has(ch, P_LETTER)
 
 // is_digit answers whether the codepoint is a decimal digit — Nd.
 //
@@ -138,13 +292,15 @@ pub fn is_letter(ch: Int) -> Bool []
 // narrower question, and the one a number parser should be asking:
 // accepting Devanagari digits in a program's integer literals is a
 // decision, not a default.
+@tier(embedded)
 pub fn is_digit(ch: Int) -> Bool []
-    todo("unicode-nv.uclass.is_digit")
+    has(ch, P_DECIMAL)
 
 // is_alphanumeric answers letter-or-number: Lu, Ll, Lt, Lm, Lo, Nd,
 // Nl, No.
+@tier(embedded)
 pub fn is_alphanumeric(ch: Int) -> Bool []
-    todo("unicode-nv.uclass.is_alphanumeric")
+    has(ch, P_LETTER | P_NUMBER)
 
 // is_whitespace answers the Unicode White_Space property.
 //
@@ -158,16 +314,19 @@ pub fn is_alphanumeric(ch: Int) -> Bool []
 //
 // CommonMark's "Unicode whitespace character" in the emphasis rules
 // is this, and markdown-nv is the consumer.
+@tier(embedded)
 pub fn is_whitespace(ch: Int) -> Bool []
-    todo("unicode-nv.uclass.is_whitespace")
+    has(ch, P_SPACE)
 
 // is_control answers the Cc category: the C0 and C1 controls.
+@tier(embedded)
 pub fn is_control(ch: Int) -> Bool []
-    todo("unicode-nv.uclass.is_control")
+    has(ch, P_CONTROL)
 
 // is_mark answers Mn, Mc or Me.
+@tier(embedded)
 pub fn is_mark(ch: Int) -> Bool []
-    todo("unicode-nv.uclass.is_mark")
+    has(ch, P_MARK)
 
 // is_punctuation answers any of the P categories.
 //
@@ -175,24 +334,28 @@ pub fn is_mark(ch: Int) -> Bool []
 // is this PLUS the S categories, as of CommonMark 0.30 — so
 // markdown-nv calls both this and `is_symbol` rather than this alone,
 // and the README says so where it explains the dependency.
+@tier(embedded)
 pub fn is_punctuation(ch: Int) -> Bool []
-    todo("unicode-nv.uclass.is_punctuation")
+    has(ch, P_PUNCT)
 
 // is_symbol answers any of the S categories: Sm, Sc, Sk, So.
+@tier(embedded)
 pub fn is_symbol(ch: Int) -> Bool []
-    todo("unicode-nv.uclass.is_symbol")
+    has(ch, P_SYMBOL)
 
 // is_uppercase answers the Uppercase property.
 //
 // The property, not the Lu category: it also covers the
 // Other_Uppercase codepoints, which is the set a case-insensitive
 // comparison has to agree with.
+@tier(embedded)
 pub fn is_uppercase(ch: Int) -> Bool []
-    todo("unicode-nv.uclass.is_uppercase")
+    has(ch, P_UPPER)
 
 // is_lowercase answers the Lowercase property.
+@tier(embedded)
 pub fn is_lowercase(ch: Int) -> Bool []
-    todo("unicode-nv.uclass.is_lowercase")
+    has(ch, P_LOWER)
 
 // is_id_start answers UAX #31's ID_Start.
 //
@@ -209,42 +372,50 @@ pub fn is_lowercase(ch: Int) -> Bool []
 //     if uclass.is_id_start(0x03B1)          // a Greek alpha
 //         println("may begin an identifier")
 // ```
+@tier(embedded)
 pub fn is_id_start(ch: Int) -> Bool []
-    todo("unicode-nv.uclass.is_id_start")
+    has(ch, P_ID_START)
 
 // is_id_continue answers UAX #31's ID_Continue.
+@tier(embedded)
 pub fn is_id_continue(ch: Int) -> Bool []
-    todo("unicode-nv.uclass.is_id_continue")
+    has(ch, P_ID_CONTINUE)
 
 // is_xid_start answers XID_Start — ID_Start closed under NFKC.
 //
 // The one to use when identifiers are normalised before they are
 // compared, which is what UAX #31 § 5.1 recommends and what stops two
 // visually identical identifiers from being different symbols.
+@tier(embedded)
 pub fn is_xid_start(ch: Int) -> Bool []
-    todo("unicode-nv.uclass.is_xid_start")
+    has(ch, P_XID_START)
 
 // is_xid_continue answers XID_Continue.
+@tier(embedded)
 pub fn is_xid_continue(ch: Int) -> Bool []
-    todo("unicode-nv.uclass.is_xid_continue")
+    has(ch, P_XID_CONTINUE)
 
 // is_ascii answers whether the codepoint is below 0x80.
+@tier(embedded)
 pub fn is_ascii(ch: Int) -> Bool []
-    todo("unicode-nv.uclass.is_ascii")
+    ch >= 0 and ch < 0x80
 
 // is_ascii_digit answers `0` to `9` and nothing else.
+@tier(embedded)
 pub fn is_ascii_digit(ch: Int) -> Bool []
-    todo("unicode-nv.uclass.is_ascii_digit")
+    ch >= '0' and ch <= '9'
 
 // is_ascii_alpha answers `A`-`Z` and `a`-`z` and nothing else.
+@tier(embedded)
 pub fn is_ascii_alpha(ch: Int) -> Bool []
-    todo("unicode-nv.uclass.is_ascii_alpha")
+    (ch >= 'A' and ch <= 'Z') or (ch >= 'a' and ch <= 'z')
 
 // is_ascii_whitespace answers space, tab, newline, carriage return
 // and form feed — the HTML and CommonMark definition of ASCII
 // whitespace, and nothing else.
+@tier(embedded)
 pub fn is_ascii_whitespace(ch: Int) -> Bool []
-    todo("unicode-nv.uclass.is_ascii_whitespace")
+    ch == ' ' or ch == '\t' or ch == '\n' or ch == '\r' or ch == '\f'
 
 // is_valid_scalar answers whether the integer is a Unicode scalar
 // value: in range, and not a surrogate.
@@ -253,5 +424,6 @@ pub fn is_ascii_whitespace(ch: Int) -> Bool []
 // built a codepoint out of arithmetic — a numeric character reference
 // in HTML, a `\u` escape in JSON — has to make before treating it as
 // text.
+@tier(embedded)
 pub fn is_valid_scalar(ch: Int) -> Bool []
-    todo("unicode-nv.uclass.is_valid_scalar")
+    ch >= 0 and ch <= 0x10FFFF and (ch < 0xD800 or ch > 0xDFFF)
