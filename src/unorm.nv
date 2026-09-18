@@ -17,9 +17,9 @@ use utbl
 // bug it will find in production, on a name with an accent in it.
 //
 // EVERY FUNCTION HERE TAKES A `UniData` because the decomposition
-// tables are the largest thing in this package — about 190 KB
-// generated.  `udata.nv` argues why that is a parameter rather than a
-// global.
+// tables are the largest thing in this package — 75,642 bytes
+// generated, half of everything behind the handle.  `udata.nv` argues
+// why that is a parameter rather than a global.
 //
 // THE CHEAP PATH IS A FIRST-CLASS ANSWER.  Most text is already NFC,
 // and a normaliser that allocates a copy to discover that is a

@@ -16,7 +16,7 @@
 // character end.  That is the claim, and this probe is it.
 //
 // `unorm` and `ucase` are NOT in the probe and are not claimed.  Their
-// tables are about 245 KB generated, which is most of an nRF52's
+// tables are 148 KB generated, which is more than half of an nRF52's
 // flash, and a firmware that genuinely needs normalisation reaches it
 // through `udata.data_from_pack` with the tables in an external flash
 // region the host read for it.  Leaving them out of the probe is the

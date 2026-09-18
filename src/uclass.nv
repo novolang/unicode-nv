@@ -5,8 +5,8 @@
 // whitespace, is this a control, can this start an identifier — read
 // small range lists compiled in with the package and take no `UniData`
 // argument.  `category`, which answers with one of Unicode's thirty
-// general categories for any codepoint at all, needs the full 40 KB
-// table and takes one.  A reader deciding what a program will cost
+// general categories for any codepoint at all, needs the 16 KB table
+// and takes one.  A reader deciding what a program will cost
 // can see which is which without leaving the signature.
 //
 // WHAT A TOKENIZER ACTUALLY WANTS is UAX #31, not the general

@@ -4,25 +4,28 @@
 // unicode-nv is a lookup; the question is where the data being looked
 // up comes from, and a `core` package cannot read a file to find out.
 //
-// THE SIZES, MEASURED OFF UNICODE 16.0's UCD, are why there is more
-// than one answer:
+// THE SIZES, MEASURED OFF UNICODE 16.0.0's UCD BY
+// `tools/gen_tables.py`, are why there is more than one answer:
 //
-//   display width        East Asian Wide/Fullwidth + the zero-width
-//                        categories Mn, Me, Cf, and the emoji
-//                        presentation ranges        ~500 ranges, ~4 KB
-//   grapheme breaks      the UAX #29 Grapheme_Cluster_Break property
-//                        plus Extended_Pictographic  ~1400 ranges, ~11 KB
-//   identifier classes   XID_Start and XID_Continue  ~1500 ranges, ~12 KB
-//   general category     every codepoint's category  ~3800 ranges, ~40 KB
-//   case mapping         simple + special + folding  ~3000 entries, ~55 KB
-//   normalisation        canonical and compatibility decompositions,
-//                        the composition exclusions, and the combining
-//                        classes                    ~19000 entries, ~190 KB
+//   display width        East Asian Width plus the categories Mn, Me
+//                        and Cf                     1330 entries, 5320 bytes
+//   grapheme and word    the UAX #29 break properties, plus
+//   breaks               Extended_Pictographic and InCB
+//                                                   3079 entries, 15395 bytes
+//   identifier classes   fourteen bits per range, XID_Start and
+//                        XID_Continue among them    3598 entries, 17990 bytes
+//   general category     every codepoint's category 4099 entries, 16396 bytes
+//   case mapping         simple, special and folding, with the four
+//                        properties the conditions read
+//                                                   5833 entries, 56351 bytes
+//   normalisation        the decompositions, the compositions, the
+//                        combining classes and the quick-check bits
+//                                                  14888 entries, 75642 bytes
 //
-// A device with 256 KB of flash can hold the first two.  It cannot
-// hold the last two and still be a program.  So the package does not
-// have one table: it has a tier that is always there and a tier the
-// caller asks for by name.
+// A device with 256 KB of flash can hold the first three, which are
+// 38 KB together.  It cannot hold the last three, which are 148 KB, and
+// still be a program.  So the package does not have one table: it has a
+// tier that is always there and a tier the caller asks for by name.
 //
 // TIER ONE — ALWAYS COMPILED IN, NO ARGUMENT.  `uwidth`, `ugrapheme`
 // and the predicates in `uclass` read tables that are constants in
@@ -35,8 +38,8 @@
 // TIER TWO — COMPILED IN, BUT ASKED FOR BY NAME.  `unorm` and `ucase`
 // take a `UniData`, and `data_full()` is the constructor that hands
 // them the generated tables.  A program that never calls either never
-// names `data_full`, so the linker never has a reason to keep 245 KB
-// of tables it cannot reach.  The parameter is the disclosure: a
+// names `data_full`, so the linker never has a reason to keep the
+// 148 KB of tables it cannot reach.  The parameter is the disclosure: a
 // reader of a signature sees that normalising costs a table, where a
 // free function would have hidden it.
 //

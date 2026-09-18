@@ -91,7 +91,7 @@ fn test_white_space_is_a_property_not_a_category() [io]
 fn test_the_predicates_a_lexer_s_inner_loop_asks_take_no_data_handle() [io]
     // The tier split made visible: these read range lists compiled in
     // with the package, so a lexer pays no `UniData` argument and no
-    // 40 KB table to ask whether a character is a letter.
+    // 16 KB table to ask whether a character is a letter.
     test.case("letter-or-number, across scripts")
     test.assert(uclass.is_alphanumeric(0x0041))
     test.assert(uclass.is_alphanumeric(0x0966))

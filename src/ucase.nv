@@ -37,8 +37,8 @@ use utbl
 // because they answer separate questions, and a program that used
 // `to_lower` for a caseless comparison has a bug on German input.
 //
-// EVERY FUNCTION TAKES A `UniData`: the mapping tables are about
-// 55 KB generated.  `udata.nv` argues why.
+// EVERY FUNCTION TAKES A `UniData`: the mapping tables are 56,351
+// bytes generated.  `udata.nv` argues why.
 //
 // THE LANGUAGE RULES ARE CONTEXT, NOT A TABLE.  `SpecialCasing.txt`
 // writes them as conditions — Final_Sigma, After_I, Not_Before_Dot,
