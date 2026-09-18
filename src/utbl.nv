@@ -1,30 +1,31 @@
 // utbl.nv — how a table is read, and how UTF-8 is walked.
 //
-// INTERNAL.  Nothing here is `pub`: it is the one search and the one
-// decoder every module in this package is written on, kept in one file
-// so there is one place where an off-by-one in a binary search could
+// Nothing here is `pub`.  It is the one search and the one decoder
+// every module in this package is written on, kept in one file so
+// there is one place where an off-by-one in a binary search could
 // live.
 //
-// A TABLE IS A STRING CONSTANT, and that is the decision this file
+// A table is a string constant, and that is the decision this file
 // exists to serve.  A `const` list is inlined at every use site
 // (docs/language/guide.md, "Constants"), so a four-thousand-entry list
-// would be copied into every call; a `const` Str is a pointer to static
-// data.  `str.len` and `str.byte_at_or` are the two entries the
-// embedded tier admits that look inside one — they lower to a bounds
-// check, a load and a select, with no allocation and no runtime call —
-// so the same table serves a host program and a Cortex-M with no heap.
-// That is why `uwidth.char_width` can be the bare `fn(Int) -> Int`
-// textwrap-nv holds AND run on a device.
+// would be copied into every call, where a `const` Str is a pointer to
+// static data.  `str.len` and `str.byte_at_or` are the two entries
+// `@tier(embedded)` admits that look inside one.  They lower to a
+// bounds check, a load and a select, with no allocation and no runtime
+// call, so the same table serves a host program and a Cortex-M with no
+// heap.  That is what lets `uwidth.char_width` be the bare
+// `fn(Int) -> Int` textwrap-nv holds and still run on a device.
 //
-// TWO SHAPES, because a property is one of two things:
+// A property is one of two things, so a table has one of two shapes.
 //
-//   COVERING — every codepoint has a value, so the table records the
-//   places the value CHANGES.  `cover` finds the last entry whose key
+//   A covering table gives every codepoint a value, so it records the
+//   places the value changes.  `cover` finds the last entry whose key
 //   is at or below the codepoint.  The first entry is always U+0000, so
 //   the search cannot miss.
 //
-//   KEYED — almost no codepoint has an entry, so the table records the
-//   ones that do.  `find` is an exact match and answers -1 for a miss.
+//   A keyed table records the codepoints that have an entry, which is
+//   almost none of them.  `find` is an exact match and answers -1 for
+//   a miss.
 //
 // A key is three bytes big-endian, which reaches U+10FFFF.  A value is
 // however many bytes the entry has left, also big-endian, and each
@@ -56,11 +57,12 @@ fn entries(t: Str, esz: Int) -> Int
 
 // The number of halvings a binary search over any table here can need.
 //
-// The tier that will not run an unbounded loop wants the bound written
-// where the checker can read it (SPEC §12.4), and a binary search has
-// one: 24 halvings reach any table of up to sixteen million entries,
-// where the largest table in this package holds six thousand.  The
-// search still leaves early — the bound is a ceiling, not a step count.
+// `@tier(embedded)` will not run an unbounded loop, so the bound is
+// written where the checker can read it (SPEC §12.4).  A binary search
+// has one.  24 halvings reach any table of up to sixteen million
+// entries, and the largest table in this package holds six thousand.
+// The search still leaves early, because the bound is a ceiling rather
+// than a step count.
 const STEPS = 24
 
 // The value of the entry covering `cp`.
@@ -100,10 +102,10 @@ fn find(t: Str, esz: Int, cp: Int) -> Int
             hi = mid - 1
     at
 
-// The byte offset of the entry keyed by the PAIR `(a, b)`, or -1.
+// The byte offset of the entry keyed by the pair `(a, b)`, or -1.
 //
 // For the composition table, whose key is a starter and a combining
-// codepoint rather than one codepoint — six bytes, compared as one
+// codepoint rather than one codepoint.  Six bytes, compared as one
 // number so the search is the same search.
 @tier(embedded)
 fn find_pair(t: Str, esz: Int, a: Int, b: Int) -> Int
@@ -129,9 +131,9 @@ fn find_pair(t: Str, esz: Int, a: Int, b: Int) -> Int
 // How many bytes the UTF-8 sequence starting at `i` occupies.
 //
 // One for a byte that cannot start a sequence, and one for a sequence
-// the string is too short to hold — the same rule `str.chars` follows,
-// which is what keeps a walk over invalid bytes finite and lets
-// `str.join(str.chars(s), "")` be `s` for every input.
+// the string is too short to hold.  That is the rule `str.chars`
+// follows, which is what keeps a walk over invalid bytes finite and
+// lets `str.join(str.chars(s), "")` be `s` for every input.
 @tier(embedded)
 fn seq_len(text: Str, i: Int) -> Int
     let b = str.byte_at_or(text, i, 0)
@@ -198,15 +200,15 @@ fn cp_start(text: Str, at: Int) -> Int
 
 // ── the same two searches over a packed blob ─────────────────────────
 //
-// `udata.data_from_pack` takes the tier-two tables as bytes the host
-// read, and every lookup behind that handle reads out of the caller's
-// slice rather than out of a constant.  A `[u8]` is not a `Str` and
-// `str.byte_at_or` cannot read one, so the searches are written twice.
-// They are the same searches, deliberately kept side by side so a fix
-// to one is visibly a fix to the other.
+// `udata.data_from_pack` takes the tables behind a `UniData` as bytes
+// the host read, and every lookup behind that handle reads out of the
+// caller's slice rather than out of a constant.  A `[u8]` is not a
+// `Str` and `str.byte_at_or` cannot read one, so the searches are
+// written twice.  They are the same searches, kept side by side so a
+// fix to one is visibly a fix to the other.
 //
-// A PACKED SECTION IS NOT AT OFFSET ZERO, so these take a base and a
-// length where the `Str` forms take a whole table.
+// A packed section does not start at offset zero, so these take a base
+// and a length where the `Str` forms take a whole table.
 
 // The three-byte key `esz` entries into a packed section.
 @tier(app)
@@ -239,7 +241,7 @@ fn pcover(t: [u8], base: Int, n: Int, esz: Int, cp: Int) -> Int
     pvalue(t, base + found * esz + 3, esz - 3)
 
 // `find`, over the packed section at `base` holding `n` bytes.  The
-// answer is an offset into the WHOLE blob, as `pvalue` wants it.
+// answer is an offset into the whole blob, as `pvalue` wants it.
 @tier(app)
 fn pfind(t: [u8], base: Int, n: Int, esz: Int, cp: Int) -> Int
     var lo = 0
@@ -285,21 +287,21 @@ fn pfind_pair(t: [u8], base: Int, n: Int, esz: Int, a: Int, b: Int) -> Int
 // A string's bytes as a list.
 //
 // The bridge between the two spellings of "some bytes" this package
-// meets: a `Str` for the tables and the caller's text, a `[u8]` for the
-// buffers `normalize_into`, `fold_into` and `pack_bytes` append to.
-// `bytes.from_str` is a re-tag rather than a copy, so this is one
-// allocation for the list and nothing else.
+// meets.  A `Str` holds the tables and the caller's text, and a `[u8]`
+// holds the buffers `normalize_into`, `fold_into` and `pack_bytes`
+// append to.  `bytes.from_str` is a re-tag rather than a copy, so this
+// is one allocation for the list and nothing else.
 @tier(app)
 fn bytes_of(s: Str) -> [u8]
     bytes.to_byte_list(bytes.from_str(s))
 
 // One codepoint's UTF-8 encoding.
 //
-// A NAMED function rather than a lambda at the `list.map` call site,
-// and the reason is measured: a local holding a lambda with a written
-// type leaks one object per element there (filed, see the CHANGELOG),
-// while an inline lambda is what the device build cannot infer.  A
-// top-level function is neither.
+// A named function rather than a lambda at the `list.map` call site.
+// A local holding a lambda with a written type leaks one object per
+// element, which is filed against the toolchain, and an inline lambda
+// is what the device build cannot infer.  A top-level function is
+// neither.
 @tier(app)
 fn char_of(c: Int) -> Str
     str.from_char(c)

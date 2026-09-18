@@ -1,36 +1,38 @@
 // uclass.nv — what kind of thing a codepoint is.
 //
-// THE TIER SPLIT IS VISIBLE IN THE SIGNATURES, and that is on
-// purpose.  The predicates a lexer's inner loop asks — is this
-// whitespace, is this a control, can this start an identifier — read
-// small range lists compiled in with the package and take no `UniData`
-// argument.  `category`, which answers with one of Unicode's thirty
-// general categories for any codepoint at all, needs the 16 KB table
-// and takes one.  A reader deciding what a program will cost
-// can see which is which without leaving the signature.
+// Which table a function reads is visible in its signature, and that
+// is on purpose.  The predicates a lexer's inner loop asks, such as
+// whether this is whitespace, whether it is a control and whether it
+// can start an identifier, read small range lists compiled in with the
+// package and take no `UniData` argument.  `category`, which answers
+// with one of Unicode's thirty general categories for any codepoint at
+// all, needs the 16 KB table and takes one.  A reader deciding what a
+// program will cost can see which is which without leaving the
+// signature.
 //
-// WHAT A TOKENIZER ACTUALLY WANTS is UAX #31, not the general
-// category: `is_id_start` and `is_id_continue` are the derived
-// properties a language's identifier rules are written against, and
-// a lexer built on "is a letter or an underscore" is a lexer that
-// disagrees with every other language about the same source file.
-// `is_xid_start` and `is_xid_continue` are the normalisation-closed
-// forms — the ones to use when identifiers are compared after NFKC,
-// which is what a language with Unicode identifiers should do.
+// A tokenizer wants UAX #31 rather than the general category.
+// `is_id_start` and `is_id_continue` are the derived properties a
+// language's identifier rules are written against, and a lexer built
+// on "is a letter or an underscore" disagrees with every other
+// language about the same source file.  `is_xid_start` and
+// `is_xid_continue` are the normalisation-closed forms, which are the
+// ones to use when identifiers are compared after NFKC.  That is what
+// a language with Unicode identifiers should do.
 //
-// ASCII HAS ITS OWN FUNCTIONS, and they exist because a lexer for a
-// language whose identifiers are ASCII should not pay a range-list
-// binary search per character.  They are not "the fast path" for the
-// Unicode ones — they answer a different, narrower question, and a
-// caller that uses them on non-ASCII text is not making an
-// approximation, it is getting `false`.
+// ASCII has its own functions, because a lexer for a language whose
+// identifiers are ASCII should not pay a range-list binary search per
+// character.  They are not a fast path for the Unicode ones.  They
+// answer a different and narrower question, and a caller that uses
+// them on non-ASCII text is not making an approximation, it is getting
+// `false`.
 //
-// WHERE THE ANSWERS COME FROM.  The predicates read `udbcore.PRED`,
-// a 18 KB covering table of fourteen bits per range generated from
-// `UnicodeData.txt`, `PropList.txt` and `DerivedCoreProperties.txt`;
-// `category` reads `udbcat.CAT`, which is 16 KB on its own and is the
-// reason that one function takes a handle.  Both are searched by
-// `utbl.cover`, so every function here is one binary search and a mask.
+// The predicates read `udbcore.PRED`, an 18 KB covering table of
+// fourteen bits per range generated from `UnicodeData.txt`,
+// `PropList.txt` and `DerivedCoreProperties.txt`.  `category` reads
+// `udbcat.CAT`, which is 16 KB on its own and is why that one function
+// takes a handle.  Both are searched by `utbl.cover`, so every
+// function here is one binary search and a mask.
+
 use std.str
 use udbcore
 use udata
@@ -82,7 +84,7 @@ const P_XID_CONTINUE = 1 << 13
 // Whether `ch` carries the predicate bits `mask`.
 //
 // A codepoint outside Unicode carries none of them, which is the same
-// answer an unassigned one inside it gets — there is no property to
+// answer an unassigned one inside it gets.  There is no property to
 // have, and a predicate that said otherwise would be inventing one.
 @tier(embedded)
 fn has(ch: Int, mask: Int) -> Bool
@@ -103,9 +105,9 @@ const CAT_COUNT = 30
 
 // The declaration index of a `UniCategory`.
 //
-// The pair of `category_of`, and the reason both exist is that the
-// table stores an index: a round trip through the enum has to be
-// exactly the generator's order or every codepoint is relabelled.
+// The pair of `category_of`.  Both exist because the table stores an
+// index, so a round trip through the enum has to be exactly the
+// generator's order or every codepoint is relabelled.
 @tier(app)
 fn cat_index(c: UniCategory) -> Int
     match c
@@ -177,10 +179,10 @@ fn cat_of_index(i: Int) -> UniCategory
 
 // UniCategory is Unicode's general category.
 //
-// All thirty, not a useful subset: a partial category enum forces
-// every value it left out into an "other" arm, and the caller then
-// cannot tell a private-use codepoint from an unassigned one — which
-// is the distinction a validator most often needs.
+// All thirty, rather than a useful subset.  A partial category enum
+// forces every value it left out into an "other" arm, and the caller
+// then cannot tell a private-use codepoint from an unassigned one.
+// That is the distinction a validator most often needs.
 pub enum UniCategory
     // Lu — an uppercase letter.
     CatUppercaseLetter
@@ -247,12 +249,11 @@ pub enum UniCategory
 
 // category is the general category of a codepoint.
 //
-// Takes a `UniData` because the table is the big one.  A codepoint
-// the handle does not cover — an astral codepoint under
-// `data_compact()` — answers `CatUnassigned`, which is the same
-// answer an unassigned codepoint gets; `udata.data_covers` is how a
-// caller tells those apart, and it has to ask before rather than
-// after.
+// Takes a `UniData` because the table is the big one.  A codepoint the
+// handle does not cover, such as an astral codepoint under
+// `data_compact()`, answers `CatUnassigned`, which is the same answer
+// an unassigned codepoint gets.  `udata.data_covers` is how a caller
+// tells those apart, and it has to ask before rather than after.
 pub @tier(app)
 fn category(d: udata.UniData, ch: Int) -> UniCategory []
     if udata.data_covers(d, ch) == false
@@ -285,17 +286,18 @@ fn category_named(abbrev: Str) -> ?UniCategory []
 // is_letter answers whether the codepoint is any of Lu, Ll, Lt, Lm,
 // Lo.
 //
-// No `UniData`: the letter ranges are their own compiled-in list.
+// No `UniData`, because the letter ranges are their own compiled-in
+// list.
 pub @tier(embedded)
 fn is_letter(ch: Int) -> Bool []
     has(ch, P_LETTER)
 
 // is_digit answers whether the codepoint is a decimal digit — Nd.
 //
-// Every script's digits, not just `0`-`9`.  `is_ascii_digit` is the
-// narrower question, and the one a number parser should be asking:
-// accepting Devanagari digits in a program's integer literals is a
-// decision, not a default.
+// Every script's digits, and not only `0`-`9`.  `is_ascii_digit` is
+// the narrower question, and the one a number parser should be asking.
+// Accepting Devanagari digits in a program's integer literals is a
+// decision rather than a default.
 pub @tier(embedded)
 fn is_digit(ch: Int) -> Bool []
     has(ch, P_DECIMAL)
@@ -308,16 +310,15 @@ fn is_alphanumeric(ch: Int) -> Bool []
 
 // is_whitespace answers the Unicode White_Space property.
 //
-// Which is NOT the Z categories: it includes the tab, the line feed,
-// the carriage return and the other C0 spaces, and it excludes
-// U+00A0's relatives that are marked non-breaking... except that it
-// does include U+00A0, because White_Space is a property Unicode
-// assigns rather than a category it derives.  Every implementation
-// that tries to derive it gets a different answer, which is why this
-// is the property and not a derivation.
+// Which is not the Z categories.  It includes the tab, the line feed,
+// the carriage return and the other C0 spaces, and it includes U+00A0
+// although that is marked non-breaking, because White_Space is a
+// property Unicode assigns rather than a category it derives.  Every
+// implementation that tries to derive it gets a different answer,
+// which is why this is the property and not a derivation.
 //
-// CommonMark's "Unicode whitespace character" in the emphasis rules
-// is this, and markdown-nv is the consumer.
+// CommonMark's "Unicode whitespace character" in the emphasis rules is
+// this, and markdown-nv is the consumer.
 pub @tier(embedded)
 fn is_whitespace(ch: Int) -> Bool []
     has(ch, P_SPACE)
@@ -335,7 +336,7 @@ fn is_mark(ch: Int) -> Bool []
 // is_punctuation answers any of the P categories.
 //
 // CommonMark's "Unicode punctuation character" in the flanking rules
-// is this PLUS the S categories, as of CommonMark 0.30 — so
+// is this together with the S categories, as of CommonMark 0.30.  So
 // markdown-nv calls both this and `is_symbol` rather than this alone,
 // and the README says so where it explains the dependency.
 pub @tier(embedded)
@@ -349,7 +350,7 @@ fn is_symbol(ch: Int) -> Bool []
 
 // is_uppercase answers the Uppercase property.
 //
-// The property, not the Lu category: it also covers the
+// The property rather than the Lu category.  It also covers the
 // Other_Uppercase codepoints, which is the set a case-insensitive
 // comparison has to agree with.
 pub @tier(embedded)
@@ -363,11 +364,11 @@ fn is_lowercase(ch: Int) -> Bool []
 
 // is_id_start answers UAX #31's ID_Start.
 //
-// What may begin an identifier: the letters, the letter numbers, and
-// the stability additions.  A language that wants `_` to start one
-// adds it itself — UAX #31 does not, deliberately, and a package that
-// silently added it would make every language that used it disagree
-// with the annex.
+// What may begin an identifier, which is the letters, the letter
+// numbers and the stability additions.  A language that wants `_` to
+// start one adds it itself.  UAX #31 does not, deliberately, and a
+// package that silently added it would make every language that used
+// it disagree with the annex.
 //
 // ```novo
 // use uclass
@@ -424,10 +425,10 @@ fn is_ascii_whitespace(ch: Int) -> Bool []
 // is_valid_scalar answers whether the integer is a Unicode scalar
 // value: in range, and not a surrogate.
 //
-// The check every decoder owes its caller, and the one a caller that
-// built a codepoint out of arithmetic — a numeric character reference
-// in HTML, a `\u` escape in JSON — has to make before treating it as
-// text.
+// The check every decoder owes its caller.  A caller that built a
+// codepoint out of arithmetic, such as a numeric character reference
+// in HTML or a `\u` escape in JSON, has to make it before treating the
+// result as text.
 pub @tier(embedded)
 fn is_valid_scalar(ch: Int) -> Bool []
     ch >= 0 and ch <= 0x10FFFF and (ch < 0xD800 or ch > 0xDFFF)

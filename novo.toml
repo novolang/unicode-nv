@@ -1,19 +1,18 @@
 [package]
 name        = "unicode-nv"
 version     = "0.1.0"
-description = "The Unicode character database as a library: grapheme cluster segmentation by UAX #29 with an incremental state machine for a terminal that receives one codepoint at a time, display width by UAX #11 as the exact `fn(Int) -> Int` textwrap-nv already takes, the four normalisation forms, full case mapping and folding with the language-specific rules, and the category and identifier predicates a tokenizer wants.  The tables are generated from Unicode 16.0.0 and tiered: width and breaks are always compiled in, normalisation and case mapping arrive as a value the caller names."
+description = "The Unicode character database as a library: grapheme cluster segmentation by UAX #29 with an incremental state machine for a terminal that receives one codepoint at a time, display width by UAX #11 as the exact `fn(Int) -> Int` textwrap-nv already takes, the four normalisation forms, full case mapping and folding with the language-specific rules, and the category and identifier predicates a tokenizer wants.  The tables are generated from Unicode 16.0.0.  Width and breaks are always compiled in, and normalisation and case mapping arrive as a value the caller names."
 license     = "Apache-2.0"
 
-# The first implementation of the interface published as 0.0.1.  Every
-# `pub fn` has a body and every signature is the one that was
-# published; `experimental` says the surface may still move before 1.0.
+# `experimental` because no program outside this repository has used
+# the package yet, and the surface may still move before 1.0.
 stability   = "experimental"
 
 # `core`.  Every answer here is a table lookup over a codepoint the
-# caller already holds: nothing is read, nothing is written, and the
-# largest tables arrive either as constants in the binary or as bytes
-# the host handed over.  That last one is the whole reason
-# `udata.data_from_pack` takes a `[u8]` rather than a path — a core
+# caller already holds.  Nothing is read and nothing is written, and
+# the largest tables arrive either as constants in the binary or as
+# bytes the host handed over.  That last one is why
+# `udata.data_from_pack` takes a `[u8]` rather than a path.  A core
 # package cannot open a file, and the tables are 183 KB.
 layer       = "core"
 
@@ -24,7 +23,9 @@ repository  = "https://github.com/novolang/unicode-nv"
 maintainers = ["novo-lang"]
 # The oldest released `novo` there is evidence for, which is the one
 # that built and tested these bytes.  The package uses `@value` structs,
-# `str.byte_at_or` at the embedded tier and `bytes.to_byte_list`.
+# `str.byte_at_or` under `@tier(embedded)` and `bytes.to_byte_list`.
+# A toolchain newer than 0.9.1 is what makes the tables readable on a
+# device, for the reason the README gives.
 novo        = ">= 0.9.1"
 
 # A library: no `main`, so `novo pkg build` type-checks and
@@ -34,9 +35,9 @@ novo        = ">= 0.9.1"
 "README.md" = "The Unicode character database as a library"
 
 [dependencies]
-# NONE, AND THE ABSENCE IS THE POINT.  This package is the bottom of
-# the text tier: textwrap-nv takes its width function, markdown-nv
-# takes its whitespace and punctuation classes for the CommonMark
-# emphasis rules, tui-nv and novoterm take its widths through
-# textwrap-nv, and slug-nv and i18n-nv will take its normalisation.
-# A dependency here would be a dependency all of them inherit.
+# None, and the absence is the design.  Every text package on the
+# registry is built on this one.  textwrap-nv takes its width function,
+# markdown-nv takes its whitespace and punctuation classes for the
+# CommonMark emphasis rules, tui-nv and novoterm take its widths
+# through textwrap-nv, and slug-nv and i18n-nv will take its
+# normalisation.  A dependency here would be one all of them inherit.

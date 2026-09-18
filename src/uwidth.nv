@@ -1,44 +1,42 @@
 // uwidth.nv — how many terminal cells a codepoint occupies.
 //
-// THIS IS THE FUNCTION THE PACKAGE EXISTS FOR.  textwrap-nv is
-// published, and it takes the width of a codepoint as a parameter
-// because unicode-nv did not exist when it was written:
+// textwrap-nv is published, and it takes the width of a codepoint as a
+// parameter because unicode-nv did not exist when it was written.
 //
 //     pub struct WrapWidth
 //         of_char: fn(Int) -> Int
 //
 // `uwidth.char_width` is that `fn(Int) -> Int`.  Not a function that
-// returns one, not one that takes a table as well — the exact shape
-// the published consumer already accepts, so that landing this
-// package is one line at a consumer's call site and no change to any
-// signature textwrap-nv published:
+// returns one, and not one that takes a table as well, but the exact
+// shape the published consumer already accepts.  Reaching for this
+// package is then one line at a consumer's call site and no change to
+// any signature textwrap-nv published.
 //
 //     let w = WrapWidth { of_char: uwidth.char_width }
 //
 // That constraint is why the width tables are compiled in and take no
-// `UniData` argument.  `udata.nv` argues the tiering; this module is
-// the tier that is always there.
+// `UniData` argument.  `udata.nv` gives the reasoning for the tables
+// that do take one.
 //
-// THE ANSWER IS 0, 1 OR 2, and never anything else.  A terminal cell
-// grid has no other widths.  A combining mark and a zero-width joiner
-// take none; an East Asian Wide or Fullwidth form takes two; the rest
-// take one.  A codepoint that is not a character at all — an unpaired
-// surrogate, a value above U+10FFFF — takes 1, because it will be
-// drawn as a replacement glyph and a replacement glyph occupies a
-// cell.
+// The answer is 0, 1 or 2 and never anything else, because a terminal
+// has no other widths.  A combining mark and a zero-width joiner take
+// no cell.  An East Asian Wide or Fullwidth form takes two.  The rest
+// take one.  A codepoint that is not a character at all, such as an
+// unpaired surrogate or a value above U+10FFFF, takes one, because it
+// will be drawn as a replacement glyph and a replacement glyph
+// occupies a cell.
 //
-// WHAT THIS IS NOT.  It is not how wide the glyph is in a
-// proportional font, it is not how many cells your particular
-// terminal will actually use, and it is not a promise that two
-// terminals agree.  It is UAX #11 plus the two categories every
-// implementation adds to it, which is what `wcwidth` answers and what
-// every terminal is written against.
+// It is not how wide the glyph is in a proportional font, it is not
+// how many cells one particular terminal will use, and it is not a
+// promise that two terminals agree.  It is UAX #11 plus the two
+// categories every implementation adds to it, which is what `wcwidth`
+// answers and what every terminal is written against.
 //
-// WHERE THE ANSWER COMES FROM.  `udbcore.WIDTH` is a covering table
-// generated from `EastAsianWidth.txt` and `UnicodeData.txt` by
-// `tools/gen_tables.py`: 5 KB, one entry per place the answer changes,
-// searched by `utbl.cover`.  Every function in this module is one such
-// search and a handful of comparisons, so all of them run at
+// `udbcore.WIDTH` is a covering table generated from
+// `EastAsianWidth.txt` and `UnicodeData.txt` by `tools/gen_tables.py`.
+// It is 5 KB, one entry per place the answer changes, searched by
+// `utbl.cover`.  Every function in this module is one such search and
+// a handful of comparisons, so all of them run under
 // `@tier(embedded)` and none of them allocates.
 
 use std.str
@@ -47,8 +45,8 @@ use ugrapheme
 use utbl
 
 // The East_Asian_Width index the table stores, in the declaration
-// order of `UniEastAsian` — the generator writes the same order, so
-// the byte IS the arm.
+// order of `UniEastAsian`.  The generator writes the same order, so
+// the byte is the arm.
 const EA_MASK = 0x07
 
 // The bit `udbcore.WIDTH` sets for a codepoint that occupies no cell.
@@ -69,16 +67,16 @@ fn class_of(ch: Int) -> Int
 // The width of the cluster lying in `text` over the bytes
 // `[start, end)`.
 //
-// THE WIDEST CODEPOINT DECIDES, not the sum, and that is what makes
-// this different from `str_width`: a family emoji is a wide pictograph,
-// a joiner and three more pictographs, and a terminal places all of it
-// in the two cells the first one asked for.
+// The widest codepoint decides rather than the sum, which is what
+// makes this different from `str_width`.  A family emoji is a wide
+// pictograph, a joiner and three more pictographs, and a terminal
+// places all of it in the two cells the first one asked for.
 //
-// THE ONE EXCEPTION IS A FLAG.  Two regional indicators are each
-// East_Asian_Width=N — one cell — and a terminal draws the pair in two.
-// Neither the sum nor the maximum gets that right on its own, so the
-// pair is named: a cluster that opens with two of them is two cells,
-// whatever else follows.
+// A flag is the one exception.  Two regional indicators are each
+// East_Asian_Width=N, which is one cell, and a terminal draws the pair
+// in two.  Neither the sum nor the maximum gets that right on its own,
+// so the pair is named.  A cluster that opens with two of them is two
+// cells, whatever else follows.
 @tier(embedded)
 fn range_width(text: Str, start: Int, end: Int) -> Int
     var widest = 0
@@ -121,16 +119,17 @@ pub enum UniEastAsian
     // A — ambiguous.  Two cells in a CJK context, one otherwise, and
     // the reason this enum is public.
     EaAmbiguous
-    // N — neutral: everything with no East Asian tradition at all.
-    // One cell.
+    // N — neutral, which is everything with no East Asian tradition at
+    // all.  One cell.
     EaNeutral
 
 // char_width is the width of one codepoint, in terminal cells.
 //
-// **This is the `fn(Int) -> Int` textwrap-nv's `WrapWidth` holds.**
-// One argument, no table, no configuration: 0 for a combining mark, a
-// zero-width space or a format character, 2 for a Wide or Fullwidth
-// form, 1 for everything else including Ambiguous.
+// This is the `fn(Int) -> Int` textwrap-nv's `WrapWidth` holds.  One
+// argument, no table and no configuration.  The answer is 0 for a
+// combining mark, a zero-width space or a format character, 2 for a
+// Wide or Fullwidth form, and 1 for everything else including
+// Ambiguous.
 //
 // ```novo
 // use uwidth
@@ -154,10 +153,9 @@ fn char_width(ch: Int) -> Int []
 // two cells.
 //
 // The second `fn(Int) -> Int`, for a terminal the user has configured
-// East Asian.  It exists as its own function rather than as a flag
-// because a flag would not fit in a `WrapWidth`, and because a
-// program that needs this knows it at start-up and never changes its
-// mind mid-line.
+// East Asian.  It is its own function rather than a flag because a
+// flag would not fit in a `WrapWidth`, and because a program that
+// needs this knows it at start-up and never changes its mind mid-line.
 pub @tier(embedded)
 fn char_width_cjk(ch: Int) -> Int []
     let c = class_of(ch)
@@ -171,11 +169,11 @@ fn char_width_cjk(ch: Int) -> Int []
 // str_width is the width of a whole string, summed over its
 // codepoints.
 //
-// This is NOT the same as summing `char_width` over the grapheme
-// clusters, and the difference is the emoji: a flag is two regional
-// indicators, a family is up to seven codepoints joined by ZWJ, and
+// This is not the same as summing `char_width` over the grapheme
+// clusters, and the difference is the emoji.  A flag is two regional
+// indicators, a family is up to seven codepoints joined by a ZWJ, and
 // summed per codepoint either comes out four cells or one.
-// `cluster_width` is the function that gets those right; this one is
+// `cluster_width` is the function that gets those right.  This one is
 // what a caller wants for text that has no such sequences in it, and
 // it is faster because it never has to segment.
 pub @tier(embedded)
@@ -192,12 +190,12 @@ fn str_width(text: Str) -> Int []
 // cluster_width is the width of one grapheme cluster.
 //
 // The cluster is what a terminal actually places, so this is the
-// honest answer for text with emoji in it: an emoji sequence is two
-// cells however many codepoints it holds, a base letter with three
-// combining marks is one, and a regional-indicator pair is two.
+// answer for text with emoji in it.  An emoji sequence is two cells
+// however many codepoints it holds, a base letter with three combining
+// marks is one, and a regional-indicator pair is two.
 //
 // A caller with a string rather than a single cluster walks
-// `ugrapheme.cursor` and calls this per cluster; `text_width` below
+// `ugrapheme.cursor` and calls this per cluster.  `text_width` below
 // does exactly that, and is the function most callers want.
 pub @tier(embedded)
 fn cluster_width(cluster: Str) -> Int []
@@ -205,9 +203,9 @@ fn cluster_width(cluster: Str) -> Int []
 
 // text_width is the width of a string, measured cluster by cluster.
 //
-// The correct-and-slower sibling of `str_width`: it segments the text
+// The correct and slower sibling of `str_width`.  It segments the text
 // with `ugrapheme` and sums `cluster_width`, so every emoji sequence
-// counts once.  Use it when the text can contain anything; use
+// counts once.  Use it when the text can contain anything, and
 // `str_width` when it cannot and the loop is hot.
 pub @tier(embedded)
 fn text_width(text: Str) -> Int []
@@ -221,16 +219,16 @@ fn text_width(text: Str) -> Int []
         at = end
     total
 
-// fit_prefix is how many BYTES of `text` fit in `columns` cells.
+// fit_prefix is how many bytes of `text` fit in `columns` cells.
 //
 // A byte count, because that is what a caller slicing the string
 // needs, and the same shape textwrap-nv's own `fit_prefix` has so the
 // two can be read side by side.
 //
-// A cluster that would straddle the edge is left out entirely: a
+// A cluster that would straddle the edge is left out entirely.  A
 // two-cell ideograph with one column left does not half-fit, and a
 // truncation that let it would produce a line one column too long,
-// which is the bug that makes a status bar wrap and scroll the whole
+// which is the fault that makes a status bar wrap and scroll the whole
 // screen.
 pub @tier(embedded)
 fn fit_prefix(text: Str, columns: Int) -> Int []
@@ -274,10 +272,10 @@ fn is_wide(ch: Int) -> Bool []
 // True for the combining marks (Mn, Me), the format characters (Cf,
 // which is where the zero-width joiner and the bidi controls live),
 // the Hangul junseong and jongseong fillers, and U+200B.  False for
-// the C0 controls: a control character has no width on a screen, but
-// it is not text either, and a caller measuring text that might
-// contain one wants to know rather than to have it silently measure
-// as nothing.
+// the C0 controls.  A control character has no width on a screen, and
+// it is not text either, so a caller measuring text that might contain
+// one wants to know rather than to have it silently measure as
+// nothing.
 pub @tier(embedded)
 fn is_zero_width(ch: Int) -> Bool []
     (class_of(ch) & EA_ZERO) != 0
@@ -286,7 +284,7 @@ fn is_zero_width(ch: Int) -> Bool []
 // terminal's locale.
 //
 // The question a program asks once, at start-up, to decide between
-// `char_width` and `char_width_cjk` — or to warn that its output will
+// `char_width` and `char_width_cjk`, or to warn that its output will
 // be misaligned on somebody else's terminal.
 pub @tier(embedded)
 fn is_ambiguous(ch: Int) -> Bool []

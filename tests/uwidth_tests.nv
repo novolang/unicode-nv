@@ -1,17 +1,16 @@
-// uwidth_tests.nv — the API suite for display width.
+// uwidth_tests.nv — the suite for display width.
 //
-// RED ON PURPOSE: every body under `src/` is a `todo()`, so every
-// assertion here reaches `not implemented: unicode-nv.uwidth.<fn>`.
 // Run with `--isolate` for one verdict per `@test`.
 //
-// THE CASES ARE UAX #11's OWN, plus the two categories every terminal
-// adds to it.  Where a case is not from the annex — the emoji
-// sequences, the replacement behaviour — the comment says whose rule
-// it is, because "every terminal does this" is a claim that has to be
-// attributable to something.
+// The cases are UAX #11's own, plus the two categories every terminal
+// adds to it.  Where a case is not from the annex, such as the emoji
+// sequences and the replacement behaviour, the comment says whose rule
+// it is, because "every terminal does this" has to be attributable to
+// something.
 //
-// THE FIRST TEST IS THE CONTRACT WITH textwrap-nv and is the one that
-// must never be allowed to go red for a reason other than `todo()`.
+// The first test is the agreement with textwrap-nv.  `char_width` is
+// the value its published `WrapWidth` holds, so that test going red is
+// every published consumer breaking.
 
 use std.str
 use std.test
@@ -21,9 +20,9 @@ use uwidth
 fn test_char_width_is_the_function_textwrap_nv_holds() [io]
     // textwrap-nv publishes `struct WrapWidth { of_char: fn(Int) -> Int }`
     // and takes the rule as a parameter because this package did not
-    // exist.  `char_width` is that rule: one Int in, one Int out, no
-    // table argument, no configuration.  If this signature ever grows
-    // an argument, every published consumer breaks.
+    // exist.  `char_width` is that rule.  One Int in, one Int out, no
+    // table argument and no configuration.  If this signature ever
+    // grows an argument, every published consumer breaks.
     let rule = uwidth.char_width
 
     test.case("the rule is a value, and calling it answers cells")
@@ -70,7 +69,7 @@ fn test_the_ambiguous_class_is_the_terminal_s_decision() [io]
 
 @test
 fn test_zero_width_is_the_half_uax11_does_not_cover() [io]
-    // East_Asian_Width says nothing about combining marks: they are
+    // East_Asian_Width says nothing about combining marks.  They are
     // Neutral, which would make them one cell.  Every implementation
     // adds the general categories Mn, Me and Cf on top, and a package
     // that did not would measure every accented word too long.
@@ -113,7 +112,7 @@ fn test_str_width_sums_codepoints_and_says_so() [io]
 @test
 fn test_cluster_width_is_what_a_terminal_actually_places() [io]
     // The difference between `str_width` and `text_width`, and the
-    // reason both exist.  A flag is two regional indicators: summed
+    // reason both exist.  A flag is two regional indicators.  Summed
     // per codepoint it is four cells, and a terminal draws it in two.
     test.case("a regional-indicator pair is one cluster, two cells")
     test.assert(uwidth.cluster_width("\u{1F1E6}\u{1F1E7}") == 2)
@@ -153,9 +152,9 @@ fn test_the_east_asian_property_answers_all_six_of_its_classes() [io]
     // it.  A match with an arm nobody reaches is a match that can be
     // wrong without anyone noticing, so all six are named here.
     test.case("N — neutral, which is everything with no East Asian tradition")
-    // U+05D0 HEBREW LETTER ALEF.  The Cyrillic letters are NOT the
-    // example to reach for: U+0410 onwards is class A, which is the
-    // whole reason `char_width_cjk` exists.
+    // U+05D0 HEBREW LETTER ALEF.  The Cyrillic letters are not the
+    // example to reach for.  U+0410 onwards is class A, which is why
+    // `char_width_cjk` exists.
     test.assert(uwidth.east_asian_width(0x05D0) == EaNeutral)
 
     test.case("Na — narrow, the ASCII range and its relatives")
@@ -175,7 +174,7 @@ fn test_the_east_asian_property_answers_all_six_of_its_classes() [io]
 
 @test
 fn test_the_cjk_rule_still_gives_a_combining_mark_no_cell() [io]
-    // `char_width_cjk` widens the ambiguous class and NOTHING else.  A
+    // `char_width_cjk` widens the ambiguous class and nothing else.  A
     // terminal configured East Asian still draws no cell for a
     // combining mark, and a version of this function that had forgotten
     // the zero-width test would measure every accented word too long on
@@ -195,7 +194,7 @@ fn test_measuring_survives_bytes_that_are_not_utf8() [io]
     // A width function is called on whatever the program has, and a
     // program that read a file has bytes rather than text.  A truncated
     // sequence and a stray continuation byte each measure as one cell
-    // and neither stops the walk, which is the same rule `str.chars`
+    // and neither stops the walk, which is the rule `str.chars`
     // follows.
     let truncated = str.from_byte(0xC3) + "A"
     let stray = str.from_byte(0x88) + "B"

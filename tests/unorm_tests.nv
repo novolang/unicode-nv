@@ -1,12 +1,9 @@
-// unorm_tests.nv — the API suite for normalisation.
+// unorm_tests.nv — the suite for normalisation.
 //
-// RED ON PURPOSE: every body under `src/` is a `todo()`.
-//
-// THE CASES ARE UAX #15's OWN.  Every one below is a line of
-// `NormalizationTest.txt`, cited by the codepoints the file lists, and
-// the whole file — about 19,000 lines — becomes a generated suite
-// beside this one when the implementation lands.  These are the ones
-// that explain WHY each rule is there.
+// The cases are UAX #15's own.  Every one below is a line of
+// `NormalizationTest.txt`, cited by the codepoints the file lists.
+// `tests/uax15_tests.nv` runs the whole file, which is about 19,000
+// lines.  These are the ones that say why each rule is there.
 
 use std.test
 use std.list
@@ -49,8 +46,8 @@ fn test_the_angstrom_sign_is_a_singleton() [io]
 fn test_combining_marks_are_reordered_by_class() [io]
     // NormalizationTest.txt: 1E0A 0323 ; 1E0C 0307 ; 0044 0323 0307 ; …
     // A dot above and a dot below have different combining classes, so
-    // the canonical order puts the below first WHATEVER order they
-    // were typed in.  Without that, two identically-rendered strings
+    // the canonical order puts the below first whatever order they
+    // were typed in.  Without that, two identically rendered strings
     // normalise differently.
     let d = udata.data_full()
 
@@ -90,8 +87,8 @@ fn test_compatibility_is_lossy_and_says_so() [io]
 @test
 fn test_hangul_is_computed_rather_than_tabulated() [io]
     // NormalizationTest.txt: D4DB ; D4DB ; 1111 1171 11B6 ; …
-    // UAX #15 § 3.12 gives Hangul its own arithmetic instead of
-    // 11,172 table rows.  A caller cannot tell, and that is the test.
+    // UAX #15 § 3.12 gives Hangul its own arithmetic instead of 11,172
+    // table entries.  A caller cannot tell, and that is the test.
     let d = udata.data_full()
 
     test.case("a syllable decomposes into its jamo")
@@ -222,8 +219,8 @@ fn test_compare_orders_a_prefix_before_the_whole() [io]
     test.case("and on the path that normalises, where the lengths differ after it")
     test.assert(unorm.compare(d, "A\u{030A}", "\u{00C5}b", FormNfc) < 0)
     test.assert(unorm.compare(d, "\u{00C5}b", "A\u{030A}", FormNfc) > 0)
-    // And the order is the NORMALISED form's, not the input's: "A"
-    // with a ring composes to U+00C5, which sorts AFTER "B".  A
+    // The order is the normalised form's rather than the input's.  "A"
+    // with a ring composes to U+00C5, which sorts after "B".  A
     // comparator that ordered by what it was handed would put these
     // two the other way round and disagree with itself the moment one
     // side arrived already composed.
@@ -234,7 +231,7 @@ fn test_compare_orders_a_prefix_before_the_whole() [io]
 
 @test
 fn test_the_marks_of_one_run_come_out_in_class_order_however_many_there_are() [io]
-    // The canonical ordering is a STABLE sort of each run of
+    // The canonical ordering is a stable sort of each run of
     // non-starters by combining class, and the insertion that
     // implements it has to walk back past the marks already placed.
     // Three marks out of order is what makes it walk more than once.
@@ -254,9 +251,9 @@ fn test_the_marks_of_one_run_come_out_in_class_order_however_many_there_are() [i
 
 @test
 fn test_quick_check_says_maybe_when_one_lookup_cannot_settle_it() [io]
-    // `QcMaybe` is the third answer and it has to be reachable: a mark
+    // `QcMaybe` is the third answer and it has to be reachable.  A mark
     // whose quick-check property is Maybe, standing where the starter
-    // before it does NOT compose with it, is a string the table alone
+    // before it does not compose with it, is a string the table alone
     // cannot decide and the algorithm has to be run on.
     let d = udata.data_full()
 

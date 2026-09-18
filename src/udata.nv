@@ -1,11 +1,11 @@
 // udata.nv — the Unicode tables, and where they live.
 //
-// THIS MODULE IS THE PACKAGE'S ONE REAL DECISION.  Everything else in
-// unicode-nv is a lookup; the question is where the data being looked
-// up comes from, and a `core` package cannot read a file to find out.
+// Everything else in unicode-nv is a lookup.  This module decides
+// where the data being looked up comes from, and a `core` package
+// cannot read a file to find out.
 //
-// THE SIZES, MEASURED OFF UNICODE 16.0.0's UCD BY
-// `tools/gen_tables.py`, are why there is more than one answer:
+// The sizes, measured off Unicode 16.0.0's UCD by
+// `tools/gen_tables.py`, are why there is more than one answer.
 //
 //   display width        East Asian Width plus the categories Mn, Me
 //                        and Cf                     1330 entries, 5320 bytes
@@ -23,61 +23,58 @@
 //                                                  14888 entries, 75642 bytes
 //
 // A device with 256 KB of flash can hold the first three, which are
-// 38 KB together.  It cannot hold the last three, which are 148 KB, and
-// still be a program.  So the package does not have one table: it has a
-// tier that is always there and a tier the caller asks for by name.
+// 38 KB together.  It cannot hold the last three, which are 148 KB,
+// and still be a program.  So the package does not have one table.
+// Some of them are always there, and the rest are asked for by name.
 //
-// TIER ONE — ALWAYS COMPILED IN, NO ARGUMENT.  `uwidth`, `ugrapheme`
-// and the predicates in `uclass` read tables that are constants in
-// this package and take no data parameter at all.  That is not a
-// convenience: textwrap-nv's `WrapWidth` holds ONE `fn(Int) -> Int`,
-// and a width function with a table parameter cannot be the value it
-// holds.  The consumer's signature decided this one, and the sizes
-// above say the decision is affordable.
+// `uwidth`, `ugrapheme` and the predicates in `uclass` read tables
+// that are constants in this package and take no data parameter at
+// all.  textwrap-nv's `WrapWidth` holds one `fn(Int) -> Int`, and a
+// width function with a table parameter cannot be the value it holds.
+// The consumer's signature decided that, and the sizes above say the
+// decision is affordable.
 //
-// TIER TWO — COMPILED IN, BUT ASKED FOR BY NAME.  `unorm` and `ucase`
-// take a `UniData`, and `data_full()` is the constructor that hands
-// them the generated tables.  A program that never calls either never
-// names `data_full`, so the linker never has a reason to keep the
-// 148 KB of tables it cannot reach.  The parameter is the disclosure: a
-// reader of a signature sees that normalising costs a table, where a
-// free function would have hidden it.
+// `unorm` and `ucase` take a `UniData`, and `data_full()` is the
+// constructor that hands them the generated tables.  A program that
+// never calls either never names `data_full`, so the linker never has
+// a reason to keep the 148 KB of tables it cannot reach.  The
+// parameter is the disclosure.  A reader of a signature sees that
+// normalising costs a table, where a free function would have hidden
+// it.
 //
-// TIER THREE — PARSED FROM BYTES THE HOST READ.  `data_from_pack`
-// takes the same tables as a byte slice the caller got from
-// somewhere — a file, a flash region, an HTTP response — and the
-// parse is arithmetic, so `core` stays sans-IO and the firmware that
-// genuinely needs normalisation can keep the tables out of its text
-// section.  This is the answer to "the embedded tier cannot carry all
-// of them": it does not have to carry them, it has to be able to
-// reach them.
+// `data_from_pack` takes the same tables as a byte slice the caller
+// got from somewhere, such as a file, a flash region or an HTTP
+// response.  The parse is arithmetic, so this package still performs
+// no input or output, and firmware that genuinely needs normalisation
+// can keep the tables out of its text section.  A device does not have
+// to carry all of them.  It has to be able to reach them.
 //
-// WHAT WAS REJECTED, and why, because the rejected options are the
-// ones a reader will ask about:
+// Three other arrangements were rejected, and a reader will ask about
+// them.
 //
-//   A caller-supplied table for EVERYTHING.  It would make the width
+//   A caller-supplied table for every lookup.  It would make the width
 //   function take two arguments and stop it being the value
 //   textwrap-nv already accepts, and it would push a table nobody
 //   wants to think about into every call site in a terminal.
 //
-//   A build flag — `@tier(embedded)` selecting a smaller table.  A
-//   package whose ANSWERS change with a build flag is a package whose
-//   tests prove nothing about the build a user makes, and a string
-//   that normalises differently on two targets is worse than one that
-//   does not normalise at all.
+//   A build flag that selected a smaller table.  A package whose
+//   answers change with a build flag is a package whose tests prove
+//   nothing about the build a user makes, and a string that normalises
+//   differently on two targets is worse than one that does not
+//   normalise at all.
 //
-//   Loading the UCD text files at run time.  `core` may not read, the
-//   files are 2 MB of ASCII, and parsing `UnicodeData.txt` at start-up
-//   is a cost every program pays for a table that never changes.
-//   `data_from_pack` takes the PACKED form for exactly that reason.
+//   Loading the UCD text files at run time.  A `core` package may not
+//   read, the files are 2 MB of ASCII, and parsing `UnicodeData.txt`
+//   at start-up is a cost every program pays for a table that never
+//   changes.  `data_from_pack` takes the packed form for that reason.
 //
-// WHERE A TIER-TWO LOOKUP ACTUALLY GOES.  Every one of them comes
-// through `t_cover`, `t_find`, `t_find_pair` and `t_value` below, and
-// each of those asks one question: is this handle carrying a pack?  A
-// handle from `data_full` or `data_compact` reads the constants in
-// `udbcat`, `udbcase` and `udbnorm`; one from `data_from_pack` reads
-// the caller's bytes.  `unorm`, `ucase` and `uclass.category` never
-// learn which, which is what keeps the three tiers one surface.
+// Every lookup behind a `UniData` comes through `t_cover`, `t_find`,
+// `t_find_pair` and `t_value` below, and each of those asks one
+// question.  Is this handle carrying a pack?  A handle from
+// `data_full` or `data_compact` reads the constants in `udbcat`,
+// `udbcase` and `udbnorm`, and one from `data_from_pack` reads the
+// caller's bytes.  `unorm`, `ucase` and `uclass.category` never learn
+// which, which is what keeps the three one surface.
 
 use std.bytes
 use std.list
@@ -130,8 +127,8 @@ const T_COMP = 8
 // The four quick-check properties.
 const T_QC = 9
 
-// How many tier-two tables there are.  A pack carries all of them, in
-// this order, so the directory is a run of lengths and needs no ids.
+// How many tables sit behind a `UniData`.  A pack carries all of them,
+// in this order, so the directory is a run of lengths and needs no ids.
 const T_COUNT = 10
 
 // The byte offset of a pack's length directory, before the version
@@ -145,10 +142,10 @@ const PACK_HEADER = 12
 // bytes laid out by a scheme it does not know.
 const PACK_FORMAT = 1
 
-// The table a tier-two id names, as the constant compiled in.
+// The table an id names, as the constant compiled in.
 //
 // An `if` chain rather than a `match`, because a bare identifier in a
-// match arm is a BINDER and not the constant it looks like — the
+// match arm is a binder and not the constant it looks like.  The
 // compiler says so (W0000, "unreachable match arm"), and the first arm
 // would otherwise answer for every id.
 @tier(app)
@@ -174,7 +171,7 @@ fn tbl_str(id: Int) -> Str
     else
         udbnorm.QC
 
-// The entry size of the table a tier-two id names.
+// The entry size of the table an id names.
 @tier(app)
 fn tbl_esz(id: Int) -> Int
     if id == T_CAT
@@ -222,7 +219,7 @@ fn sect_at(blob: [u8], id: Int) -> Int
         at = at + sect_len(blob, i)
     at
 
-// The covering lookup for `cp` in tier-two table `id`.
+// The covering lookup for `cp` in the table `id` names.
 @tier(app)
 fn t_cover(d: UniData, id: Int, cp: Int) -> Int
     if packed(d)
@@ -230,7 +227,7 @@ fn t_cover(d: UniData, id: Int, cp: Int) -> Int
     else
         utbl.cover(tbl_str(id), tbl_esz(id), cp)
 
-// The offset of the entry keyed `cp` in tier-two table `id`, or -1.
+// The offset of the entry keyed `cp` in the table `id` names, or -1.
 //
 // The offset is into whichever medium the handle reads, so it is only
 // ever handed back to `t_value`.
@@ -272,8 +269,8 @@ fn t_pool(d: UniData, id: Int, i: Int) -> Int
 // carrying it in the signature of every function that needs them is
 // how a reader sees the cost without reading the implementation.
 //
-// It is a handle, not a copy: `data_full()` returns a view over
-// constants already in the binary and allocates nothing.
+// It is a handle rather than a copy.  `data_full()` returns a view
+// over constants already in the binary and allocates nothing.
 pub struct UniData
     // Which Unicode version the tables behind this handle describe.
     // `data_full()` answers `UNICODE_VERSION`; `data_from_pack` answers
@@ -283,20 +280,18 @@ pub struct UniData
     // How many bytes of table this handle reaches.  A caller sizing a
     // firmware image asks this rather than guessing from the docs.
     table_bytes: Int
-    // False when the handle came from `data_compact()` — the tier that
-    // answers for the Basic Multilingual Plane and nothing above it.
-    // Every function that takes a `UniData` documents what it does
-    // with a codepoint the compact tier cannot answer for.
+    // False when the handle came from `data_compact()`, which answers
+    // for the Basic Multilingual Plane and nothing above it.  Every
+    // function that takes a `UniData` documents what it does with a
+    // codepoint the handle cannot answer for.
     complete: Bool
     // The packed tables this handle reads out of, empty for a handle
     // over the compiled-in ones.
     //
-    // ADDED IN 0.1.0, with a default, because the 0.0.x interface
-    // promised that `data_from_pack` BORROWS the bytes it is given and
-    // left the handle nowhere to keep them — a struct of three scalars
-    // cannot reach a caller's slice.  The default is what keeps every
-    // literal written against the interface compiling; the CHANGELOG
-    // says so.
+    // `data_from_pack` borrows the bytes it is given, and a struct of
+    // three scalars has nowhere to keep them.  The field carries a
+    // default so that a literal naming only the other three fields
+    // still compiles.
     pack: [u8] = []
 
 // data_full is the generated tables, compiled into the program.
@@ -320,17 +315,17 @@ fn data_full() -> UniData []
 
 // data_compact is the same tables cut to the Basic Multilingual Plane.
 //
-// The honest description of what it gives up is: an astral codepoint —
-// emoji, the historic scripts, the mathematical alphanumerics — is left
-// exactly as it was found rather than normalised or case-mapped.
-// `complete` is false, so a caller that must not silently do that can
-// check.  `table_bytes` answers the part of the tables this handle
-// reaches, which is about four fifths of the whole.
+// An astral codepoint, such as an emoji, a historic script or a
+// mathematical alphanumeric, is left exactly as it was found rather
+// than normalised or case-mapped.  `complete` is false, so a caller
+// that must not silently do that can check.  `table_bytes` answers the
+// part of the tables this handle reaches, which is about four fifths
+// of the whole.
 //
-// WHAT IT DOES NOT DO IS MAKE THE BINARY SMALLER.  The handle reads the
-// same constants `data_full` reads and refuses above U+FFFF; there is
+// It does not make the binary smaller.  The handle reads the same
+// constants `data_full` reads and refuses above U+FFFF, and there is
 // no separately generated smaller table, so a program that links this
-// function links all of them.  A program that needs a smaller IMAGE
+// function links all of them.  A program that needs a smaller image
 // passes `data_from_pack` a blob holding only what it needs, which is
 // what the packed form is for.
 //
@@ -345,17 +340,17 @@ fn data_compact() -> UniData []
 // data_from_pack reads the tables out of bytes the caller already
 // holds.
 //
-// The host reads the file; this parses it.  That is the whole of how a
-// `core` package gets a quarter of a megabyte of data without an
-// effect: the bytes arrive as an argument.
+// The host reads the file and this parses it.  That is how a `core`
+// package gets a quarter of a megabyte of data without an effect.  The
+// bytes arrive as an argument.
 //
-// `None` when the blob does not open with `PACK_MAGIC`, when its
-// declared length disagrees with what it was handed, or when its
-// format version is one this release does not know — three refusals
-// rather than an index into a stranger's bytes.
+// The answer is `None` when the blob does not open with `PACK_MAGIC`,
+// when its declared length disagrees with what it was handed, or when
+// its format version is one this release does not know.  Three
+// refusals, rather than an index into a stranger's bytes.
 //
-// The blob is BORROWED, not copied: every lookup reads out of the
-// slice the caller passed, so the caller must keep it alive for as
+// The blob is borrowed rather than copied.  Every lookup reads out of
+// the slice the caller passed, so the caller must keep it alive for as
 // long as the `UniData`.
 pub @tier(app)
 fn data_from_pack(blob: [u8]) -> ?UniData []
@@ -385,10 +380,9 @@ fn data_from_pack(blob: [u8]) -> ?UniData []
 // pack_bytes writes the compiled-in tables back out in the packed
 // form, appended to the caller's buffer.
 //
-// So that a build step can produce the blob that `data_from_pack`
-// takes without this package shipping a second program to generate
-// one, and so that a caller can check a pack it was given against the
-// tables it has.
+// A build step can produce the blob that `data_from_pack` takes
+// without this package shipping a second program to generate one, and
+// a caller can check a pack it was given against the tables it has.
 pub @tier(app)
 fn pack_bytes(out: [u8], d: UniData) -> [u8] []
     var total = PACK_HEADER + str.len(UNICODE_VERSION) + T_COUNT * 4
@@ -415,9 +409,9 @@ fn data_version(d: UniData) -> Str []
 // Always true for `data_full()`.  False above U+FFFF for
 // `data_compact()`, and false for whatever a pack left out.  Every
 // function taking a `UniData` treats a codepoint it does not cover as
-// having no mapping and no decomposition — the identity answer — so
-// this is the question to ask BEFORE trusting a result rather than a
-// way to interpret one afterwards.
+// having no mapping and no decomposition, which is the identity
+// answer.  So this is the question to ask before trusting a result,
+// rather than a way to interpret one afterwards.
 pub @tier(app)
 fn data_covers(d: UniData, ch: Int) -> Bool []
     if ch < 0 or ch > 0x10FFFF

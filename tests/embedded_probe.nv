@@ -1,7 +1,7 @@
-// embedded_probe.nv — this package's device claim, as a program that
-// either builds for a Cortex-M or does not.
+// embedded_probe.nv — the modules this package builds for a device, as
+// a program that either builds for a Cortex-M or does not.
 //
-// It is not a test.  `scripts/shard_audit.sh`'s `core-embedded` row
+// It is not a test.  `scripts/shard_audit.sh`'s `core-embedded` check
 // copies it and the modules it names into a package of its own and
 // runs
 //
@@ -9,51 +9,47 @@
 //
 // which produces a real Cortex-M4 ELF or fails.
 //
-// WHAT THE CLAIM COVERS, AND WHAT IT DOES NOT.  `uwidth`, `ugrapheme`
-// and `uclass`'s predicates read tables of about 27 KB in total, and a
-// device that drives a serial console or a small display needs exactly
-// them: how many cells does this character take, and where does one
-// character end.  That is the claim, and this probe is it.
+// `uwidth`, `ugrapheme` and `uclass`'s predicates read tables of about
+// 38 KB in total, and a device driving a serial console or a small
+// display needs exactly them.  How many cells does this character
+// take, and where does one character end.  Those three modules are
+// what this probe builds.
 //
-// `unorm` and `ucase` are NOT in the probe and are not claimed.  Their
-// tables are 148 KB generated, which is more than half of an nRF52's
-// flash, and a firmware that genuinely needs normalisation reaches it
-// through `udata.data_from_pack` with the tables in an external flash
-// region the host read for it.  Leaving them out of the probe is the
-// honest form of that: the claim is for the half that fits, and the
-// README says which half.
+// `unorm` and `ucase` are not in the probe and do not build for a
+// device.  Their tables are 148 KB generated, which is more than half
+// of an nRF52's flash, and firmware that genuinely needs normalisation
+// reaches it through `udata.data_from_pack` with the tables in an
+// external flash region the host read for it.  The README says which
+// half is which.
 //
-// AT 0.1.0 THIS PROBE LINKS AND THEN REPORTS FAIL, AND THAT IS A
-// FILED DEFECT RATHER THAN A BUG IN THE PACKAGE.  On the bare-metal
-// runtime `str.len` of a `Str` constant holding a `\x00` answers the
-// number of bytes before the NUL rather than the constant's length,
-// and `str.byte_at_or` bounds-checks against that short length — so a
-// byte table compiled into a constant is unreadable on a device, and
-// every table here opens with the entry for U+0000, whose three key
-// bytes are zero.  Five of the eight checks below pass: they are the
-// five that read no table.  Filed as
-// `runtime/embedded-str-len-truncates-at-a-nul` (class: silent).
+// The eight checks below answer correctly under a toolchain newer than
+// 0.9.1.  Under 0.9.1 the length of a `Str` constant on the bare-metal
+// runtime stops at the first NUL and `str.byte_at_or` bounds-checks
+// against that short length, so a byte table compiled into a constant
+// is unreadable on a device.  Every table here opens with the entry for
+// U+0000, whose three key bytes are zero, so the three checks that read
+// a table answer wrongly and the probe prints
+// `FAIL: unicode-embedded 5`.
 //
-// NOTHING HERE ENCODES AROUND IT.  An alphabet that avoided `\x00`
-// would cost a quarter of the table size and would hide the defect
-// from the next package to meet it.  The claim is stated as blocked
-// instead; the README says the same thing in the same words.
+// Nothing here encodes around that.  An alphabet that avoided `\x00`
+// would cost a quarter of the table size and would hide the fault from
+// the next package to meet it.
 //
-// WHAT LINKS, AT 0.1.0, IS THE TABLES.  The three modules the probe
-// names read 38 KB of generated table between them — the width
-// classes, the UAX #29 break classes and the predicate bits — and the
-// image carries them, so a green run is the 38 KB fitting and the
-// lookups running with no allocator rather than the signatures merely
-// type-checking.  `tools/alloc_scan.sh` is the other half of the same
-// claim, read off the emitted LLVM on the host.
+// The three modules the probe names read 38 KB of generated table
+// between them, which is the width classes, the UAX #29 break classes
+// and the predicate bits, and the image carries them.  So a green run
+// is the 38 KB fitting and the lookups running with no allocator,
+// rather than the signatures merely type-checking.
+// `tools/alloc_scan.sh` reads the other half off the emitted LLVM on
+// the host.
 //
-// WHAT KEEPS THE REST OUT.  `uclass` reaches `udata` for `category`,
-// and `udata` reaches all three tier-two tables, so the compilation
-// unit HOLDS them; every function that touches them carries
-// `@tier(app)`, nothing in the probe reaches one, and the build drops
-// an out-of-tier function the program cannot call.  That prune is what
-// lets one package be both halves, and it is why `data_full` may
-// allocate a handle while `char_width` may not.
+// `uclass` reaches `udata` for `category`, and `udata` reaches all
+// three tables behind a `UniData`, so the compilation unit holds them.
+// Every function that touches them carries `@tier(app)`, nothing in
+// the probe reaches one, and the build drops a function the
+// annotations keep off a device and the program cannot call.  That
+// prune is what lets one package be both halves, and it is why
+// `data_full` may allocate a handle while `char_width` may not.
 
 use std.str
 use uclass
@@ -99,7 +95,7 @@ fn main() [hw, time]
     bsp.board.init()
     // 8 is the number of checks in `score` on the path a linked build
     // takes.  The count is printed on a failure rather than only
-    // compared, so a device that disagrees with the host says HOW MANY
+    // compared, so a device that disagrees with the host says how many
     // it lost and a bisect has somewhere to start.
     let n = score()
     if n == 8

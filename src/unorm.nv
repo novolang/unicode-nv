@@ -5,32 +5,33 @@ use std.str
 use udata
 use utbl
 
-// WHY NORMALISE.  "é" is two different strings: one codepoint, or an
-// "e" followed by a combining acute.  They look identical, they mean
-// the same thing, and `==` says they are different.  Every filename
+// "é" is two different strings.  It is one codepoint, or an "e"
+// followed by a combining acute.  They look identical, they mean the
+// same thing, and `==` says they are different.  Every filename
 // comparison, every login, every cache key and every deduplication
 // over text a user typed is wrong until one of them has normalised.
 //
-// The macOS filesystem hands out NFD; almost everything else hands
-// out NFC; a form that came through an IME may be neither.  A program
-// that compares text from two sources and has not normalised has a
-// bug it will find in production, on a name with an accent in it.
+// The macOS filesystem hands out NFD and almost everything else hands
+// out NFC, and a form that came through an IME may be neither.  A
+// program that compares text from two sources and has not normalised
+// has a fault it will find in production, on a name with an accent in
+// it.
 //
-// EVERY FUNCTION HERE TAKES A `UniData` because the decomposition
-// tables are the largest thing in this package — 75,642 bytes
-// generated, half of everything behind the handle.  `udata.nv` argues
-// why that is a parameter rather than a global.
+// Every function here takes a `UniData`, because the decomposition
+// tables are the largest thing in this package.  They are 75,642 bytes
+// generated, which is half of everything behind the handle.
+// `udata.nv` gives the reasoning for the parameter.
 //
-// THE CHEAP PATH IS A FIRST-CLASS ANSWER.  Most text is already NFC,
-// and a normaliser that allocates a copy to discover that is a
-// normaliser a program will stop calling.  `quick_check` answers
-// yes/no/maybe from a single table lookup per codepoint with no
+// The cheap path is a published answer of its own.  Most text is
+// already NFC, and a normaliser that allocates a copy to discover that
+// is a normaliser a program will stop calling.  `quick_check` answers
+// yes, no or maybe from a single table lookup per codepoint with no
 // allocation at all, and `compare` decides canonical equivalence
-// without materialising either normalised form.  Those two are what
-// a hot path should call; `normalize` is for when the normalised
-// string is what you actually need to keep.
+// without building either normalised form.  Those two are what a hot
+// path should call.  `normalize` is for when the normalised string is
+// what the caller needs to keep.
 //
-// HANGUL IS ARITHMETIC, NOT A TABLE.  UAX #15 § 3.12 gives the
+// Hangul is arithmetic rather than a table.  UAX #15 § 3.12 gives the
 // eleven thousand syllables a formula, and `hangul_decompose` and
 // `compose_pair` use it, so the tables carry none of them.  A caller
 // cannot tell, which is the point.
@@ -44,7 +45,7 @@ const L_BASE = 0x1100
 // U+1161, the first vowel jamo.
 const V_BASE = 0x1161
 
-// U+11A7 — one BELOW the first trailing jamo, because a syllable with
+// U+11A7, one below the first trailing jamo, because a syllable with
 // no trailing jamo is written as index zero.
 const T_BASE = 0x11A7
 
@@ -69,7 +70,7 @@ const QC_Y = 0
 // Certainly no.
 const QC_N = 1
 
-// Possibly — the answer only NFC and NFKC ever give.
+// Possibly, which is the answer only NFC and NFKC ever give.
 const QC_M = 2
 
 // Whether `form` composes after decomposing.
@@ -117,8 +118,8 @@ fn hangul_decompose(out: [Int], ch: Int) -> [Int]
 
 // One codepoint's decomposition, appended to `out` and fully expanded.
 //
-// Recursive, because a decomposition's own parts may decompose: the
-// table holds the ONE-STEP mapping, and storing the closure instead
+// Recursive, because a decomposition's own parts may decompose.  The
+// table holds the one-step mapping, and storing the closure instead
 // would repeat every shared tail in every entry that ends with it.
 fn decomp_into(d: udata.UniData, out: [Int], ch: Int, compat: Bool) -> [Int]
     if is_hangul(ch)
@@ -144,21 +145,21 @@ fn decomp_into(d: udata.UniData, out: [Int], ch: Int, compat: Bool) -> [Int]
 // `ch` appended to `out` in canonical order.
 //
 // An insertion rather than a sort afterwards.  The canonical ordering
-// algorithm (UAX #15 § 3.11) is defined as a stable sort of each run of
-// non-starters by combining class, and inserting each mark just past
-// the last one whose class is no greater IS that sort — written so the
-// list is built once instead of being rewritten per swap.
+// algorithm (UAX #15 § 3.11) is defined as a stable sort of each run
+// of non-starters by combining class, and inserting each mark just
+// past the last one whose class is no greater is that sort, written so
+// the list is built once instead of being rewritten per swap.
 fn insert_ordered(d: udata.UniData, out: [Int], ch: Int) -> [Int]
     let c = combining_class(d, ch)
     if c == 0
         list.push(out, ch)
     else
-        // Indexed from the END rather than by a cursor walking down,
-        // because the loop's own bound is then the whole guarantee that
-        // the index stays in range: `n` steps from `n - 1` reach 0 and
-        // stop.  Written the other way it needed an `at == 0` test that
-        // no input could ever reach, which is a line no test can cover
-        // and a reader has to reason about.
+        // Indexed from the end rather than by a cursor walking down,
+        // because the loop's own bound is then the whole guarantee
+        // that the index stays in range.  `n` steps from `n - 1` reach
+        // 0 and stop.  Written the other way it needed an `at == 0`
+        // test that no input could ever reach, which is a line no test
+        // can cover and a reader has to reason about.
         let n = list.len(out)
         var at = n
         for k in 0..n
@@ -187,12 +188,12 @@ fn decomposed(d: udata.UniData, text: Str, compat: Bool) -> [Int]
 
 // The canonical composition of an already-ordered sequence.
 //
-// UAX #15 § 3.11: walk forward holding the index of the last starter,
-// and compose a mark onto it when nothing between them BLOCKS the
-// pair — nothing whose combining class is at or above the mark's.  A
-// mark that composes is absorbed, so `last_cc` deliberately does not
-// move: the character that would block the next mark is still the one
-// before this one.
+// UAX #15 § 3.11 walks forward holding the index of the last starter,
+// and composes a mark onto it when nothing between them blocks the
+// pair.  A blocker is anything whose combining class is at or above
+// the mark's.  A mark that composes is absorbed, so `last_cc`
+// deliberately does not move.  The character that would block the next
+// mark is still the one before this one.
 fn composed(d: udata.UniData, src: [Int]) -> [Int]
     var out: [Int] = []
     var starter = 0 - 1
@@ -234,15 +235,15 @@ fn safe_starter(d: udata.UniData, text: Str, at: Int, form: UniForm) -> Bool
 
 // Where the chunk of `text` that begins at byte `at` ends.
 //
-// The unit `compare` works in, and the boundary has to be a SAFE
-// starter rather than merely a starter: normalisation reaches across an
-// ordinary one.  Three Hangul jamo are three starters and NFC composes
-// all three into one syllable, so a walk that cut between them would
-// compare `1111` against `D4DB` and call two spellings of the same
-// syllable different.  A safe starter — combining class zero AND
-// quick-check Yes for the form — is the position at which normalising a
-// prefix and normalising the whole give the same answer, which is the
-// property `stream_boundary` publishes.
+// The unit `compare` works in.  The boundary has to be a safe starter
+// rather than merely a starter, because normalisation reaches across
+// an ordinary one.  Three Hangul jamo are three starters and NFC
+// composes all three into one syllable, so a walk that cut between
+// them would compare `1111` against `D4DB` and call two spellings of
+// the same syllable different.  A safe starter is one with combining
+// class zero and quick-check Yes for the form.  It is the position at
+// which normalising a prefix and normalising the whole give the same
+// answer, which is the property `stream_boundary` publishes.
 fn chunk_end(d: udata.UniData, text: Str, at: Int, form: UniForm) -> Int
     let n = str.len(text)
     var i = at + utbl.seq_len(text, at)
@@ -263,8 +264,8 @@ pub enum UniForm
     // form the web platform specifies, and the one to store text in.
     FormNfc
     // NFKD — compatibility decomposition.  The ligature "ﬁ" becomes
-    // "fi", the superscript "²" becomes "2", the fullwidth forms
-    // become their narrow ones.  LOSSY, on purpose.
+    // "fi", the superscript "²" becomes "2", and the fullwidth forms
+    // become their narrow ones.  Lossy, on purpose.
     FormNfkd
     // NFKC — compatibility decomposition, then canonical composition.
     // What an identifier comparison should use, and what a search
@@ -279,15 +280,15 @@ pub enum UniQuickCheck
     QcYes
     // Certainly no.  Normalising will change the string.
     QcNo
-    // Possibly.  The string holds codepoints that may or may not be
-    // in order — deciding needs the full algorithm.  A caller that
+    // Possibly.  The string holds codepoints that may or may not be in
+    // order, and deciding needs the full algorithm.  A caller that
     // wants a definite answer calls `is_normalized`, which runs it.
     QcMaybe
 
 // normalize is the string in the requested form.
 //
-// Allocates a new string.  A string already in the form is returned
-// as it was — no copy — which is what makes calling this on text that
+// Allocates a new string.  A string already in the form is returned as
+// it was, with no copy, which is what makes calling this on text that
 // is usually already normalised affordable.
 //
 // ```novo
@@ -307,18 +308,18 @@ pub fn normalize(d: udata.UniData, text: Str, form: UniForm) -> Str []
 
 // normalize_into appends the normalised text to a caller's buffer.
 //
-// The allocation-free half: the caller owns the buffer, the function
-// appends, and a program normalising a stream of strings reuses one
-// buffer instead of producing one string per input.  The same shape
-// numfmt-nv and ansi-nv use for the same reason.
+// The allocation-free half.  The caller owns the buffer and the
+// function appends, so a program normalising a stream of strings
+// reuses one buffer instead of producing one string per input.  It is
+// the shape numfmt-nv and ansi-nv use for the same reason.
 pub fn normalize_into(out: [u8], d: udata.UniData, text: Str, form: UniForm) -> [u8] []
     list.append(out, utbl.utf8_of(normalized_cps(d, text, form)))
 
 // quick_check is UAX #15's quick check, which never allocates.
 //
-// One table lookup per codepoint, and it stops at the first
-// codepoint that makes the answer `QcNo`.  This is the function to
-// call before `normalize` in anything hot.
+// One table lookup per codepoint, stopping at the first codepoint that
+// makes the answer `QcNo`.  This is the function to call before
+// `normalize` in anything hot.
 pub fn quick_check(d: udata.UniData, text: Str, form: UniForm) -> UniQuickCheck []
     var answer = QcYes
     var last_cc = 0
@@ -338,11 +339,11 @@ pub fn quick_check(d: udata.UniData, text: Str, form: UniForm) -> UniQuickCheck 
             break
         if qc == QC_M
             // The annex's table stops at "maybe" here, and one more
-            // lookup settles most of them: a mark that the starter
-            // before it actually composes with WILL move when the
-            // string is normalised, which is `QcNo` rather than a
-            // question.  Where the pair does not compose the answer
-            // stays `QcMaybe` and `is_normalized` runs the algorithm.
+            // lookup settles most of them.  A mark that the starter
+            // before it actually composes with moves when the string
+            // is normalised, which is `QcNo` rather than a question.
+            // Where the pair does not compose the answer stays
+            // `QcMaybe` and `is_normalized` runs the algorithm.
             if starter >= 0 and (last_cc < cc or last_cc == 0) and compose_pair(d, starter, ch) != None
                 answer = QcNo
                 break
@@ -356,8 +357,9 @@ pub fn quick_check(d: udata.UniData, text: Str, form: UniForm) -> UniQuickCheck 
 // is_normalized is the definite answer.
 //
 // Runs the full algorithm when `quick_check` says `QcMaybe`, so it is
-// never wrong and sometimes slower.  It still allocates nothing: it
-// compares as it goes rather than building the normalised form.
+// never wrong and sometimes slower.  It still allocates nothing,
+// because it compares as it goes rather than building the normalised
+// form.
 pub fn is_normalized(d: udata.UniData, text: Str, form: UniForm) -> Bool []
     match quick_check(d, text, form)
         QcYes   => true
@@ -367,19 +369,19 @@ pub fn is_normalized(d: udata.UniData, text: Str, form: UniForm) -> Bool []
 // compare decides canonical equivalence without normalising either
 // side.
 //
-// The function most callers actually want.  "Are these two strings
-// the same name" is answered by walking both in normalised order and
-// comparing as it goes — no allocation, and it stops at the first
+// The function most callers want.  "Are these two strings the same
+// name" is answered by walking both in normalised order and comparing
+// as it goes.  Nothing is allocated, and the walk stops at the first
 // difference, where normalising both would have built two strings to
 // throw away.
 //
 // Negative, zero or positive, ordered by the normalised forms, so it
 // can also be a sort key comparator.
 pub fn compare(d: udata.UniData, a: Str, b: Str, form: UniForm) -> Int []
-    // The cheap path first: two strings that are both already in the
-    // form are compared as they stand, with nothing built and nothing
-    // normalised.  That is what a cache key or a filename comparison
-    // hits, and it is the reason this function exists rather than
+    // The cheap path comes first.  Two strings that are both already
+    // in the form are compared as they stand, with nothing built and
+    // nothing normalised.  That is what a cache key or a filename
+    // comparison hits, and it is why this function exists rather than
     // "normalise both and use `==`".
     if quick_check(d, a, form) == QcYes and quick_check(d, b, form) == QcYes
         compare_cps_of(a, b)
@@ -393,12 +395,12 @@ pub fn equivalent(d: udata.UniData, a: Str, b: Str, form: UniForm) -> Bool []
 
 // combining_class is a codepoint's Canonical_Combining_Class.
 //
-// 0 for a starter — a base character — and 1 to 254 for the marks
-// that reorder around one.  The primitive canonical ordering is
-// defined in terms of, exposed because a caller writing its own
-// mark-aware algorithm (a cursor that moves over a base and its
-// marks, a renderer stacking diacritics) needs it and should not have
-// to reimplement the table.
+// 0 for a starter, which is a base character, and 1 to 254 for the
+// marks that reorder around one.  Canonical ordering is defined in
+// terms of this.  It is published because a caller writing its own
+// mark-aware algorithm, such as a cursor that moves over a base and
+// its marks or a renderer stacking diacritics, needs it and should not
+// have to reimplement the table.
 pub fn combining_class(d: udata.UniData, ch: Int) -> Int []
     if udata.data_covers(d, ch) == false
         0
@@ -407,10 +409,10 @@ pub fn combining_class(d: udata.UniData, ch: Int) -> Int []
 
 // decompose_char is a single codepoint's decomposition.
 //
-// The canonical one when `compat` is false, the compatibility one
-// when it is true.  RECURSIVE — the result is fully decomposed, so a
-// caller does not have to loop — and it is the codepoint itself, as a
-// one-element list, when there is no decomposition.
+// The canonical one when `compat` is false, and the compatibility one
+// when it is true.  The result is fully decomposed, so a caller does
+// not have to loop, and it is the codepoint itself as a one-element
+// list when there is no decomposition.
 //
 // Hangul is computed rather than tabulated, per UAX #15 § 3.12, and
 // answers here exactly as if it were.
@@ -423,10 +425,10 @@ pub fn decompose_char(d: udata.UniData, ch: Int, compat: Bool) -> [Int] []
 //
 // `None` when the pair does not compose, when the composite is in the
 // composition exclusion table, or when the first codepoint is not a
-// starter.  The excluded ones are the reason this is a function and
-// not a reversal of `decompose_char`: a composite that decomposes
-// does not necessarily recompose, and a normaliser that assumed it
-// did would produce text that is not NFC.
+// starter.  The excluded ones are why this is a function rather than a
+// reversal of `decompose_char`.  A composite that decomposes does not
+// necessarily recompose, and a normaliser that assumed it did would
+// produce text that is not NFC.
 pub fn compose_pair(d: udata.UniData, starter: Int, combining: Int) -> ?Int []
     if combining_class(d, starter) != 0
         None
@@ -445,20 +447,20 @@ pub fn compose_pair(d: udata.UniData, starter: Int, combining: Int) -> ?Int []
 
 // is_starter answers whether the codepoint has combining class 0.
 //
-// The boundary the whole algorithm is chunked at: a normaliser can
+// The boundary the whole algorithm is chunked at.  A normaliser can
 // process text one starter-to-starter run at a time, which is what
-// makes streaming normalisation possible and what bounds the buffer
-// it needs.
+// makes streaming normalisation possible and what bounds the buffer it
+// needs.
 pub fn is_starter(d: udata.UniData, ch: Int) -> Bool []
     combining_class(d, ch) == 0
 
 // stream_boundary is the byte offset of the last position in `text`
 // at which normalisation can safely stop.
 //
-// For a caller normalising a stream: it hands over what it has,
+// For a caller normalising a stream.  It hands over what it has,
 // learns how much of it was safe to emit, and keeps the tail for the
 // next chunk.  Without this a streaming normaliser either buffers the
-// whole document or produces a wrong answer at every chunk edge — and
+// whole document or produces a wrong answer at every chunk edge, and
 // the chunk edge is exactly where a combining mark will be.
 //
 // Zero when no position in the chunk is safe, which is what a chunk
@@ -477,10 +479,10 @@ pub fn stream_boundary(d: udata.UniData, text: Str, form: UniForm) -> Int []
 // Two strings compared codepoint by codepoint, neither normalised.
 //
 // The comparison `compare` makes when both sides are already in the
-// form.  Codepoints and not bytes, so the order is the order of the
-// scalar values rather than of their UTF-8 encodings — which agree for
-// every pair UTF-8 can encode, and saying which one is meant costs
-// nothing.
+// form.  Codepoints rather than bytes, so the order is the order of
+// the scalar values rather than of their UTF-8 encodings.  The two
+// agree for every pair UTF-8 can encode, and saying which one is meant
+// costs nothing.
 fn compare_cps_of(a: Str, b: Str) -> Int
     var i = 0
     var j = 0
@@ -507,9 +509,9 @@ fn compare_cps_of(a: Str, b: Str) -> Int
 // Two strings compared one chunk at a time.
 //
 // The slow half of `compare`.  Each side's next chunk is normalised on
-// its own and the two are compared CODEPOINT BY CODEPOINT rather than
+// its own, and the two are compared codepoint by codepoint rather than
 // chunk against chunk, because a chunk on one side need not produce as
-// many codepoints as the chunk it lines up with: one syllable on the
+// many codepoints as the chunk it lines up with.  One syllable on the
 // left is three jamo on the right.  The walk stops at the first
 // codepoint that differs, so neither normalised string is ever built
 // whole.

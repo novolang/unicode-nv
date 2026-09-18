@@ -8,45 +8,46 @@ use ugrapheme
 use unorm
 use utbl
 
-// THE THREE THINGS ASCII CASE MAPPING GETS WRONG, and they are the
-// reason this module exists rather than `str.upper` being enough:
+// ASCII case mapping gets three things wrong, and they are why this
+// module exists rather than `str.upper` being enough.
 //
-//   A MAPPING IS NOT ONE-TO-ONE.  "ß" uppercases to "SS" — two
-//   codepoints.  "ﬁ" uppercases to "FI".  A function returning one
-//   codepoint cannot express either, so the full forms return lists
-//   and the simple forms are named `simple` so that nobody reaches
-//   for one by accident.
+//   A mapping is not one to one.  "ß" uppercases to "SS", which is two
+//   codepoints, and "ﬁ" uppercases to "FI".  A function returning one
+//   codepoint cannot express either, so the full forms return lists,
+//   and the simple forms carry `simple` in their names so that nobody
+//   reaches for one by accident.
 //
-//   A MAPPING IS NOT LENGTH-PRESERVING, which follows, and means
+//   A mapping is not length-preserving, which follows, and means that
 //   `to_upper` may return a longer string than it was given.  Code
-//   that assumed otherwise — an index kept across a case conversion,
-//   a fixed buffer — breaks on real names.
+//   that assumed otherwise, such as an index kept across a case
+//   conversion or a fixed buffer, breaks on real names.
 //
-//   A MAPPING DEPENDS ON THE LANGUAGE.  Turkish "i" uppercases to
-//   "İ", not "I", and a Turkish system that uppercases "i" to "I"
-//   produces a word that is a different word.  Lithuanian keeps the
-//   dot on a lowercased "i" under an accent.  So the language is a
-//   parameter, `LANG_ROOT` is the default, and a program that has a
-//   locale passes it rather than hoping.
+//   A mapping depends on the language.  Turkish "i" uppercases to "İ"
+//   rather than "I", and a Turkish system that uppercases "i" to "I"
+//   produces a different word.  Lithuanian keeps the dot on a
+//   lowercased "i" under an accent.  So the language is a parameter,
+//   `LANG_ROOT` is the default, and a program that has a locale passes
+//   it rather than hoping.
 //
-// CASE FOLDING IS NOT LOWERCASING, and the distinction is the one
+// Case folding is not lowercasing, and that distinction is the one
 // most often got wrong.  Lowercasing is for display.  Folding is for
-// comparison: it maps "ß" and "ss" to the same thing so that a
-// caseless match finds both, and its output is not text anybody
-// should show a user.  `fold` and `to_lower` are separate functions
-// because they answer separate questions, and a program that used
-// `to_lower` for a caseless comparison has a bug on German input.
+// comparison.  It maps "ß" and "ss" to the same thing so that a
+// caseless match finds both, and its output is not text anybody should
+// show a user.  `fold` and `to_lower` are separate functions because
+// they answer separate questions, and a program that used `to_lower`
+// for a caseless comparison is wrong on German input.
 //
-// EVERY FUNCTION TAKES A `UniData`: the mapping tables are 56,351
-// bytes generated.  `udata.nv` argues why.
+// Every function takes a `UniData`, because the mapping tables are
+// 56,351 bytes generated.  `udata.nv` gives the reasoning.
 //
-// THE LANGUAGE RULES ARE CONTEXT, NOT A TABLE.  `SpecialCasing.txt`
-// writes them as conditions — Final_Sigma, After_I, Not_Before_Dot,
-// More_Above, After_Soft_Dotted — and every one of them is a question
-// about the characters AROUND the one being mapped.  So the tables
-// carry the unconditional mappings and the four properties the
-// conditions are written over, and the conditions themselves are the
-// predicates below.
+// The language rules are context rather than a table.
+// `SpecialCasing.txt` writes them as conditions, which are
+// Final_Sigma, After_I, Not_Before_Dot, More_Above and
+// After_Soft_Dotted, and every one of them is a question about the
+// characters around the one being mapped.  So the tables carry the
+// unconditional mappings and the four properties the conditions are
+// written over, and the conditions themselves are the predicates
+// below.
 
 // The lowercase slot of an entry in `udbcase.SIMPLE` and `udbcase.FULL`.
 const M_LOWER = 0
@@ -268,7 +269,7 @@ fn lower_in_context(d: udata.UniData, text: Str, at: Int, after: Int, language: 
     if is_turkic(language) and ch == I_DOTTED
         [0x0069]
     elif is_turkic(language) and ch == DOT_ABOVE and after_i(d, text, at)
-        // `0307; ; 0307; 0307; tr After_I` — the dot above is DROPPED,
+        // `0307; ; 0307; 0307; tr After_I`.  The dot above is dropped,
         // because the capital it sat on lowercased to a dotted i that
         // already carries one.  An empty answer is the mapping.
         []
@@ -293,7 +294,7 @@ fn upper_in_context(d: udata.UniData, text: Str, at: Int, language: Str) -> [Int
     if is_turkic(language) and ch == 0x0069
         [I_DOTTED]
     elif is_lithuanian(language) and ch == DOT_ABOVE and after_soft_dotted(d, text, at)
-        // `0307; 0307; ; ; lt After_Soft_Dotted` — Lithuanian writes
+        // `0307; 0307; ; ; lt After_Soft_Dotted`.  Lithuanian writes
         // the dot on a lowercase i and drops it when the i becomes a
         // capital, which already has none.
         []
@@ -356,10 +357,10 @@ fn title_segment(d: udata.UniData, text: Str, start: Int, end: Int, language: St
 // mapping, which is what a program with no locale should use.
 pub const LANG_ROOT = ""
 
-// Turkish, where "i" and "I" are four letters rather than two: "i"
+// Turkish, where "i" and "I" are four letters rather than two.  "i"
 // uppercases to a dotted capital and "I" lowercases to a dotless
 // small.  A constant rather than a string literal at every call site,
-// because the whole of the bug is a caller who did not know this case
+// because the whole fault is a caller who did not know this case
 // existed.
 pub const LANG_TURKISH = "tr"
 
@@ -372,10 +373,10 @@ pub const LANG_LITHUANIAN = "lt"
 
 // to_lower is the string lowercased, under the full rules.
 //
-// The final-sigma rule is applied: a Greek capital sigma at the end of
-// a word lowercases to "ς" and elsewhere to "σ", which is context that
-// a per-codepoint mapping cannot see and is the second reason the
-// string functions exist alongside the codepoint ones.
+// The final-sigma rule is applied.  A Greek capital sigma at the end
+// of a word lowercases to "ς" and elsewhere to "σ".  That is context a
+// per-codepoint mapping cannot see, and the second reason the string
+// functions exist alongside the codepoint ones.
 //
 // ```novo
 // use udata
@@ -390,7 +391,7 @@ pub fn to_lower(d: udata.UniData, text: Str, language: Str) -> Str []
 
 // to_upper is the string uppercased, under the full rules.
 //
-// May be LONGER than its input: "ß" becomes "SS", "ﬁ" becomes "FI",
+// May be longer than its input.  "ß" becomes "SS", "ﬁ" becomes "FI",
 // and a Greek letter with a ypogegrammeni becomes two codepoints.
 pub fn to_upper(d: udata.UniData, text: Str, language: Str) -> Str []
     utbl.str_of(map_text(d, text, M_UPPER, language))
@@ -399,11 +400,11 @@ pub fn to_upper(d: udata.UniData, text: Str, language: Str) -> Str []
 // word in its titlecase form, the rest lowercased.
 //
 // Word boundaries come from `ugrapheme.words`, so "o'clock" titlecases
-// to "O'clock" rather than "O'Clock" — the apostrophe does not start a
-// word — which is the difference between this and a naive
-// split-on-space.
+// to "O'clock" rather than "O'Clock", because the apostrophe does not
+// start a word.  That is the difference between this and a naive
+// split on spaces.
 //
-// Titlecase is a third form, not uppercase: the digraph "ǳ"
+// Titlecase is a third form rather than uppercase.  The digraph "ǳ"
 // titlecases to "ǲ" and uppercases to "Ǳ".
 pub fn to_title(d: udata.UniData, text: Str, language: Str) -> Str []
     var out: [Int] = []
@@ -415,24 +416,24 @@ pub fn to_title(d: udata.UniData, text: Str, language: Str) -> Str []
 
 // fold is the string case-folded, for caseless comparison.
 //
-// NOT for display.  The full folding: "ß" folds to "ss", so a
-// caseless search for "strasse" finds "Straße".  The result is
-// stable — folding a folded string changes nothing.
+// Not for display.  This is the full folding, so "ß" folds to "ss"
+// and a caseless search for "strasse" finds "Straße".  The result is
+// stable, because folding a folded string changes nothing.
 //
-// No language parameter, and that is deliberate: Unicode defines a
-// Turkic variant of case folding, but a fold is a comparison key, and
-// a comparison key that depends on the reader's locale means two
-// systems disagree about whether two strings match.  A program that
-// genuinely needs the Turkic fold uses `simple_fold` per codepoint and
-// applies its own rule; the README says so.
+// There is no language parameter, and that is deliberate.  Unicode
+// defines a Turkic variant of case folding, but a fold is a comparison
+// key, and a comparison key that depends on the reader's locale means
+// two systems disagree about whether two strings match.  A program
+// that genuinely needs the Turkic fold uses `simple_fold` per
+// codepoint and applies its own rule, and the README says so.
 pub fn fold(d: udata.UniData, text: Str) -> Str []
     utbl.str_of(map_text(d, text, M_FOLD, LANG_ROOT))
 
 // eq_fold is a caseless comparison that allocates nothing.
 //
-// Folds both sides as it walks and stops at the first difference —
-// which is what a lookup table or a header-name comparison wants,
-// where folding both strings to throw them away is the whole cost.
+// Folds both sides as it walks and stops at the first difference.
+// That is what a lookup table or a header-name comparison wants, where
+// folding both strings to throw them away is the whole cost.
 pub fn eq_fold(d: udata.UniData, a: Str, b: Str) -> Bool []
     var ai = 0
     var bi = 0
@@ -476,8 +477,8 @@ pub fn fold_into(out: [u8], d: udata.UniData, text: Str) -> [u8] []
 
 // simple_lower is the one-codepoint lowercase mapping.
 //
-// The codepoint itself when it has none.  Named `simple` because it
-// is the mapping that is wrong for the cases above, and a reader of a
+// The codepoint itself when it has none.  Named `simple` because it is
+// the mapping that is wrong for the cases above, and a reader of a
 // call site should see which one was chosen.
 pub fn simple_lower(d: udata.UniData, ch: Int) -> Int []
     simple_of(d, ch, M_LOWER)
@@ -492,8 +493,8 @@ pub fn simple_title(d: udata.UniData, ch: Int) -> Int []
 
 // simple_fold is the one-codepoint case folding.
 //
-// The building block for a caller writing its own folding rule — the
-// Turkic variant, or a fold restricted to a script.
+// The building block for a caller writing its own folding rule, such
+// as the Turkic variant or a fold restricted to a script.
 pub fn simple_fold(d: udata.UniData, ch: Int) -> Int []
     simple_of(d, ch, M_FOLD)
 
@@ -520,11 +521,11 @@ pub fn full_upper(d: udata.UniData, ch: Int, language: Str) -> [Int] []
 
 // is_cased answers whether the codepoint has case at all.
 //
-// False for a digit, for a Han ideograph, for punctuation — which is
-// most of Unicode.  The question the final-sigma rule and the
+// False for a digit, a Han ideograph and punctuation, which is most of
+// Unicode.  It is the question the final-sigma rule and the
 // titlecasing rule are both written in terms of, and the one a caller
-// asks before deciding a string "has no uppercase form" rather than
-// "is already uppercase".
+// asks before deciding that a string has no uppercase form rather than
+// that it is already uppercase.
 pub fn is_cased(d: udata.UniData, ch: Int) -> Bool []
     (case_flags(d, ch) & C_CASED) != 0
 

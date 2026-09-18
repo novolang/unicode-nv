@@ -1,16 +1,11 @@
-// ugrapheme_tests.nv — the API suite for grapheme cluster
-// segmentation.
+// ugrapheme_tests.nv — the suite for grapheme cluster segmentation.
 //
-// RED ON PURPOSE: every body under `src/` is a `todo()`, so every
-// assertion here reaches `not implemented: unicode-nv.ugrapheme.<fn>`.
-//
-// THE CASES ARE UAX #29's OWN.  `GraphemeBreakTest.txt` writes a
+// The cases are UAX #29's own.  `GraphemeBreakTest.txt` writes a
 // boundary as `÷` and a non-boundary as `×`, and every case below
 // names the line it came from in that notation, so the suite can be
 // checked against the annex rather than against somebody's reading of
-// it.  When the implementation lands, the whole of
-// `GraphemeBreakTest.txt` — about 1100 cases — becomes a generated
-// suite beside this one; these are the ones worth reading by hand.
+// it.  `tests/uax29_tests.nv` runs the whole of that file, which is
+// about 1100 cases.  These are the ones worth reading by hand.
 
 use std.list
 use std.str
@@ -183,7 +178,7 @@ fn test_nth_and_truncate_are_the_questions_a_program_really_asks() [io]
 @test
 fn test_a_cursor_can_start_part_way_through() [io]
     // What a renderer resuming at a scroll position needs.  An offset
-    // inside a codepoint moves BACK rather than producing a range that
+    // inside a codepoint moves back rather than producing a range that
     // cuts one in half.
     let text = "a\u{0308}bc"
 
@@ -346,8 +341,8 @@ fn test_a_windows_line_ending_is_one_word_segment_and_not_two() [io]
 @test
 fn test_segmenting_bytes_that_are_not_text_still_terminates() [io]
     // A segmenter is called on whatever the program has.  A four-byte
-    // sequence that decodes ABOVE U+10FFFF is well-formed UTF-8 in
-    // shape and not a codepoint at all; it has no properties, so it
+    // sequence that decodes above U+10FFFF is well-formed UTF-8 in
+    // shape and not a codepoint at all.  It has no properties, so it
     // joins nothing and is its own segment.
     let over = str.from_byte(0xF4) + str.from_byte(0x90) + str.from_byte(0x80) + str.from_byte(0x80)
 

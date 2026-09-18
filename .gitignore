@@ -1,19 +1,19 @@
 # Build outputs.
 _novo/
 
-# The generated API page.  `novo doc` writes it here so you can read
-# what the registry will serve; the registry gets its own copy,
+# The generated API page.  `novo doc` writes it here so a reader can
+# see what the registry will serve, and the registry gets its own copy,
 # uploaded beside the archive by `novo pkg publish`.  It is generated
 # from the sources, so committing it would be committing a second
 # original.
 APIDOC.md
 
-# The built package binary.  This package is a LIBRARY and builds none;
-# the line is here for when it grows a `main`.
+# The built package binary.  This package is a library and builds none.
+# The line is here for when it grows a `main`.
 /unicode-nv
 
-# novo.lock is NOT ignored.  `docs/publishing.md` says to commit it, for
-# a library as much as for an application: it never ships, and it is
-# what makes a build reproducible.  This package declares no
-# dependencies, so the toolchain writes none — the absence of the file
-# is the empty lock.
+# novo.lock is not ignored.  `docs/publishing.md` says to commit it,
+# for a library as much as for an application.  It never ships, and it
+# is what makes a build reproducible.  This package declares no
+# dependencies, so the toolchain writes none, and the absence of the
+# file is the empty lock.

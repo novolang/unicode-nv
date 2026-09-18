@@ -13,12 +13,7 @@ defined over it. [textwrap-nv](https://novo-lang.org/packages/textwrap-nv),
 [fuzzy-nv](https://novo-lang.org/packages/fuzzy-nv) and
 [diff-nv](https://novo-lang.org/packages/diff-nv) are built on it.
 
-**Status: implemented, experimental.** Every function published as the
-0.0.x interface has a body, and every signature is the one that was
-published. The tables are generated from the Unicode 16.0.0 database.
-One claim made by the interface is not met: the modules in this package
-do not yet give correct answers on a microcontroller, for the reason
-under [Running on a microcontroller](#running-on-a-microcontroller).
+The tables are generated from the Unicode 16.0.0 database.
 
 ## What it is
 
@@ -242,15 +237,15 @@ order to compare has a bug on German input.
 
 ## Running on a microcontroller
 
-novo-lang lets a package state which of its modules can run on a device
-with no heap allocator, and the compiler checks that claim on every
-build. Here the claim covers `uwidth`, `ugrapheme` and `uclass`'s
-predicates. Those read tables of about 38 KB in total, which is what a
-device driving a serial console or a small display needs.
+`uwidth`, `ugrapheme` and `uclass`'s predicates build for a device with
+no heap allocator, and the rest of the package does not. They read
+tables of about 38 KB in total, which is what a device driving a serial
+console or a small display needs. The compiler checks that on every
+build, on a host as well as for a board.
 
-`tests/embedded_probe.nv` is that claim as a program. It builds a
-Cortex-M4 executable that runs eight checks over the width rule, the
-break state machine and the ASCII and scalar predicates.
+`tests/embedded_probe.nv` is those modules as a device program. It
+builds a Cortex-M4 executable that runs eight checks over the width
+rule, the break state machine and the ASCII and scalar predicates.
 
 ```bash
 novo build --target=nrf52-qemu tests/embedded_probe.nv
@@ -260,23 +255,14 @@ That command was run against this release and produced an executable of
 77 KB, with the width, break and predicate tables in it and none of the
 other three.
 
-**The executable does not yet give the right answers, and this release
-says so rather than leaving it to be found.** It prints
-`FAIL: unicode-embedded 5`: five of its eight checks pass and three do
-not. The three that fail are the three that read a table. On the
-bare-metal runtime, `str.len` of a text constant that contains a zero
-byte answers the number of bytes before that zero rather than the
-constant's length, and the byte reader refuses every position past it.
-Every table here begins with the entry for U+0000, whose first three
-bytes are zero, so on a device every table reads as empty. The same
-tables are correct on a host, where the suites and the conformance
-files pass. The defect is filed against the toolchain as
-`runtime/embedded-str-len-truncates-at-a-nul`; nothing in this package
-encodes around it, because an alphabet that avoided the zero byte would
-cost a quarter of the table size and would hide the problem from the
-next package to meet it.
+The tables read correctly on a device under a toolchain newer than
+0.9.1, where the length of a text constant on the embedded runtime
+counts the whole constant. Under 0.9.1 that length stops at the first
+zero byte, and because every table here opens with the entry for
+U+0000 the three checks that read a table answer wrongly. The same
+tables are correct on a host under either toolchain.
 
-`unorm` and `ucase` are outside the claim. Their tables are about
+`unorm` and `ucase` do not build for a device. Their tables are about
 129 KB generated, which is half of an nRF52's flash. Firmware that
 genuinely needs normalisation reads a packed table out of an external
 flash region and passes the bytes to `udata.data_from_pack`.
@@ -294,12 +280,12 @@ The three compiled-in tables are 38,705 bytes and the three behind
 `UniData` are 148,389 bytes, for 187,094 bytes in total. The sizes are
 generated from the Unicode 16.0.0 database by `tools/gen_tables.py`. A
 program that never names `udata.data_full` gives the linker no reason to
-keep the last three rows.
+keep the last three tables.
 
 A table is a text constant holding one byte per byte of data, searched
 by halving. An entry is a three-byte codepoint and one, two or three
-bytes of value; a table records the places a property CHANGES rather
-than one row per codepoint, which is why a property defined over 1.1
+bytes of value. A table records the places a property changes rather
+than one entry per codepoint, which is why a property defined over 1.1
 million codepoints fits in a few kilobytes.
 
 ## What is not included
@@ -414,21 +400,6 @@ The files each script reads are named at the top of it. The database
 files themselves are not in this repository: they are 8 MB of text the
 Unicode Consortium publishes, and a copy here would be a second
 original.
-
-## Implementation status
-
-Everything published as the 0.0.x interface is implemented. What is not
-yet true of this release is one claim rather than one function:
-
-| Item | Implemented |
-| --- | --- |
-| `uwidth` — width, the East Asian property, fitting a prefix | yes |
-| `ugrapheme` — cluster boundaries, the incremental machine, word boundaries | yes |
-| `unorm` — the four forms, the quick check, comparison, streaming | yes |
-| `ucase` — the full and simple mappings, folding, the language rules | yes |
-| `uclass` — the thirty categories, UAX #31, the class predicates | yes |
-| `udata` — the compiled-in tables, the compact tier, the packed form | yes |
-| Correct answers on a microcontroller | no — see [Running on a microcontroller](#running-on-a-microcontroller) |
 
 ## Licence
 

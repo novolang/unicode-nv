@@ -1,9 +1,7 @@
-// ucase_tests.nv — the API suite for case mapping and folding.
+// ucase_tests.nv — the suite for case mapping and folding.
 //
-// RED ON PURPOSE: every body under `src/` is a `todo()`.
-//
-// THE CASES ARE THE UCD's OWN — `SpecialCasing.txt` and
-// `CaseFolding.txt` — and every one of them is a case ASCII case
+// The cases are the UCD's own, from `SpecialCasing.txt` and
+// `CaseFolding.txt`, and every one of them is a case ASCII case
 // mapping gets wrong.  A suite of "A" uppercases to "A" would prove
 // nothing this module is for.
 
@@ -65,10 +63,10 @@ fn test_the_final_sigma_rule_needs_the_whole_word() [io]
 
 @test
 fn test_folding_is_not_lowercasing() [io]
-    // CaseFolding.txt: 00DF ; F ; 0073 0073 — the full fold of ß is
-    // "ss", and its LOWERCASE is still "ß".  A program that used
-    // to_lower for a caseless comparison has a bug on German input,
-    // and this is that bug written down.
+    // CaseFolding.txt: 00DF ; F ; 0073 0073.  The full fold of ß is
+    // "ss", and its lowercase is still "ß".  A program that used
+    // to_lower for a caseless comparison is wrong on German input, and
+    // this is that case written down.
     let d = udata.data_full()
 
     test.case("lowercasing leaves the sharp s alone")
@@ -141,10 +139,10 @@ fn test_the_into_forms_append_rather_than_allocate() [io]
 
 @test
 fn test_the_simple_forms_are_the_building_blocks_for_a_caller_s_own_rule() [io]
-    // Published because a program that needs the Turkic case FOLD —
-    // which `fold` deliberately does not offer — has to assemble it
-    // per codepoint, and because a caller walking text one character
-    // at a time should not have to go through the string functions.
+    // Published because a program that needs the Turkic case fold,
+    // which `fold` deliberately does not offer, has to assemble it per
+    // codepoint, and because a caller walking text one character at a
+    // time should not have to go through the string functions.
     let d = udata.data_full()
 
     test.case("the three one-to-one mappings agree with the string forms on ASCII")

@@ -1,23 +1,23 @@
 // alloc_probe.nv — the program `tools/alloc_scan.sh` compiles to read
 // the emitted LLVM for `novo_alloc`.
 //
-// It is not a test.  It exists to make every function of the
-// classification and width path appear in one module's IR with its own
-// name, and it is built with `--opt=0` for exactly that reason: at the
-// default optimisation level the whole thing inlines into `novo_main`,
-// there is nothing left to attribute an allocation to, and an assertion
-// that no lookup allocates would pass because no lookup is there.
+// It is not a test.  It makes every function of the classification and
+// width path appear in one module's IR with its own name, and it is
+// built with `--opt=0` for that reason.  At the default optimisation
+// level the whole thing inlines into `novo_main`, there is nothing left
+// to attribute an allocation to, and an assertion that no lookup
+// allocates would pass because no lookup is there.
 //
-// WHAT THE CLAIM IS.  `uwidth.char_width` is the `fn(Int) -> Int`
-// textwrap-nv's `WrapWidth` holds, and a terminal calls it once per
-// character of every line it paints; `ugrapheme.break_step` is what a
-// terminal emulator calls once per codepoint the parser hands it;
-// `uclass`'s predicates are a lexer's inner loop.  None of the three
-// may reach the allocator, and the tier annotations say so — this
-// program is what checks that the annotations are true of the code
-// rather than of the author's intention.
+// `uwidth.char_width` is the `fn(Int) -> Int` textwrap-nv's
+// `WrapWidth` holds, and a terminal calls it once per character of
+// every line it paints.  `ugrapheme.break_step` is what a terminal
+// emulator calls once per codepoint the parser hands it.  `uclass`'s
+// predicates are a lexer's inner loop.  None of the three may reach
+// the allocator, which is what the `@tier(embedded)` annotations say,
+// and this program is what checks that the annotations are true of the
+// code rather than of the author's intention.
 //
-// The answers are printed rather than checked: the five suites own
+// The answers are printed rather than checked, because the suites own
 // correctness.  This one is here to be read as text.
 
 use uclass

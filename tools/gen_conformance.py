@@ -4,21 +4,21 @@
     python3 tools/gen_conformance.py <ucd-directory> [--tests tests]
 
 `GraphemeBreakTest.txt`, `WordBreakTest.txt` and `NormalizationTest.txt`
-are the oracle for UAX #29 and UAX #15: they are the annexes' own
+are the oracle for UAX #29 and UAX #15.  They are the annexes' own
 answers, written in the annexes' own notation, and an implementation
 that agrees with them is conformant by definition rather than by
 somebody's reading.
 
-WHY A SUBSET IS COMMITTED AND THE WHOLE FILES ARE NOT.  The three come
-to 3.3 MB, the Consortium publishes them, and a copy here would be a
+A subset is committed and the whole files are not.  The three come to
+3.3 MB, the Consortium publishes them, and a copy here would be a
 second original that goes stale the next release.  What is committed is
-a deterministic sample — the opening cases, which are the basic rules,
-and then every Nth case, which spreads the rest over the whole file —
-so `novo test` proves conformance on a fixed corpus with no network and
-no download.
+a deterministic sample.  It is the opening cases, which are the basic
+rules, and then every Nth case, which spreads the rest over the whole
+file, so `novo test` proves conformance on a fixed corpus with no
+network and no download.
 
-WHAT RUNS THE WHOLE FILES.  The same suites, with `NOVO_UCD` naming a
-directory holding them:
+The same suites run the whole files, with `NOVO_UCD` naming a directory
+holding them:
 
     NOVO_UCD=/path/to/ucd novo test tests/uax29_tests.nv
     NOVO_UCD=/path/to/ucd novo test tests/uax15_tests.nv
@@ -81,11 +81,11 @@ def write_const(tests, name, const, rows, note, total):
     block += ["// " + l if l else "//" for l in note.strip().split("\n")]
     block += [
         "//",
-        "// The whole file holds %d cases; this is %d of them — the opening"
+        "// The whole file holds %d cases and this is %d of them."
         % (total, len(rows)),
-        "// cases, which are the rules in their simplest form, and then a fixed",
-        "// stride through the rest.  `NOVO_UCD` runs the whole file through",
-        "// the same reader.",
+        "// They are the opening cases, which are the rules in their simplest",
+        "// form, and then a fixed stride through the rest.  `NOVO_UCD` runs",
+        "// the whole file through the same reader.",
         'const %s = "%s"' % (const, "\\n".join(rows)),
         "",
     ]
@@ -124,9 +124,9 @@ def main():
     write_const(
         tests, "uax15_tests.nv", "NORMALIZATION_CASES",
         sample(n, NORM_HEAD, NORM_STRIDE),
-        "A case is five semicolon-separated columns of codepoints — the\n"
-        "source, its NFC, its NFD, its NFKC and its NFKD — and the annex's\n"
-        "conformance clause is the twenty equalities they imply.",
+        "A case is five semicolon-separated columns of codepoints.  They\n"
+        "are the source, its NFC, its NFD, its NFKC and its NFKD, and the\n"
+        "annex's conformance clause is the twenty equalities they imply.",
         len(n))
     return 0
 

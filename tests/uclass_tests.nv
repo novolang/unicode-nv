@@ -1,9 +1,7 @@
-// uclass_tests.nv — the API suite for the category and identifier
+// uclass_tests.nv — the suite for the category and identifier
 // predicates.
 //
-// RED ON PURPOSE: every body under `src/` is a `todo()`.
-//
-// THE CASES ARE THE UCD's `UnicodeData.txt` (the categories),
+// The cases are the UCD's `UnicodeData.txt` (the categories),
 // `PropList.txt` (White_Space) and `DerivedCoreProperties.txt`
 // (ID_Start, XID_Continue).  The ones worth reading by hand are where
 // a derived property and the category it looks like disagree.
@@ -89,9 +87,9 @@ fn test_white_space_is_a_property_not_a_category() [io]
 
 @test
 fn test_the_predicates_a_lexer_s_inner_loop_asks_take_no_data_handle() [io]
-    // The tier split made visible: these read range lists compiled in
-    // with the package, so a lexer pays no `UniData` argument and no
-    // 16 KB table to ask whether a character is a letter.
+    // These read range lists compiled in with the package, so a lexer
+    // pays no `UniData` argument and no 16 KB table to ask whether a
+    // character is a letter.
     test.case("letter-or-number, across scripts")
     test.assert(uclass.is_alphanumeric(0x0041))
     test.assert(uclass.is_alphanumeric(0x0966))
@@ -118,8 +116,9 @@ fn test_the_predicates_a_lexer_s_inner_loop_asks_take_no_data_handle() [io]
 fn test_the_commonmark_pair_markdown_nv_depends_on() [io]
     // markdown-nv's emphasis rules are written in terms of "Unicode
     // whitespace" and "Unicode punctuation", and as of CommonMark 0.30
-    // the second means the P categories AND the S categories.  Getting
-    // this wrong makes `*a*` and `*a *` render the same way.
+    // the second means the P categories together with the S
+    // categories.  Getting this wrong makes `*a*` and `*a *` render
+    // the same way.
     test.case("punctuation is the P categories")
     test.assert(uclass.is_punctuation(0x002E))
     test.assert(uclass.is_punctuation(0x005F))
@@ -155,18 +154,17 @@ fn test_uax31_is_what_a_tokenizer_wants() [io]
 
 @test
 fn test_xid_is_the_form_that_survives_normalisation() [io]
-    // U+037A GREEK YPOGEGRAMMENI is ID_Start and NOT XID_Start: NFKC
+    // U+037A GREEK YPOGEGRAMMENI is ID_Start and not XID_Start.  NFKC
     // maps it to U+0345 COMBINING GREEK YPOGEGRAMMENI, which is a mark
     // and cannot start an identifier, so the normalised form would no
     // longer be one.  A language comparing identifiers after NFKC must
-    // use the XID forms or two visually identical identifiers become
+    // use the XID forms, or two visually identical identifiers become
     // different symbols.
     //
-    // THE INTERFACE RELEASE NAMED U+2126 OHM SIGN HERE AND WAS WRONG.
-    // Its NFKC is U+03A9 GREEK CAPITAL LETTER OMEGA, which IS an
+    // The ohm sign is not the codepoint to show this with.  The NFKC of
+    // U+2126 OHM SIGN is U+03A9 GREEK CAPITAL LETTER OMEGA, which is an
     // identifier start, so the ohm sign is XID_Start in
-    // `DerivedCoreProperties.txt` and always has been.  The rule the
-    // test is about is real; the codepoint chosen to show it was not.
+    // `DerivedCoreProperties.txt` and always has been.
     test.case("the ypogegrammeni starts an ID but not an XID")
     test.assert(uclass.is_id_start(0x037A))
     test.assert(uclass.is_xid_start(0x037A) == false)
@@ -217,8 +215,8 @@ fn test_a_scalar_value_is_the_check_every_decoder_owes_its_caller() [io]
 fn test_every_one_of_the_thirty_names_itself_and_reads_back() [io]
     // `category_abbrev` and `category_named` are a pair, and the pair
     // is what lets a `\p{...}` in a pattern be resolved once at compile
-    // time rather than compared as text per character.  A round trip
-    // over ALL THIRTY is the test, because the two functions are two
+    // time rather than compared as text per character.  The test is a
+    // round trip over all thirty, because the two functions are two
     // hand-written tables and the way they go wrong is one arm.
     let d = udata.data_full()
     let samples = [0x0041, 0x0061, 0x01C5, 0x02B0, 0x4E16,

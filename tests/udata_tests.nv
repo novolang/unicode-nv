@@ -1,20 +1,20 @@
-// udata_tests.nv — the three ways of getting the tables, and the claim
-// that they answer the same.
+// udata_tests.nv — the three ways of getting the tables, and whether
+// they answer the same.
 //
 // `data_full`, `data_compact` and `data_from_pack` are the whole of
-// `udata`'s design: the tables compiled in, the tables cut to the Basic
-// Multilingual Plane, and the tables as bytes the host read.  The third
-// is the one a firmware needs and the one nothing else in the suite
-// exercises, because every other suite takes `data_full` and never
-// notices which side of the branch it is on.
+// `udata`'s design.  They are the tables compiled in, the tables cut to
+// the Basic Multilingual Plane, and the tables as bytes the host read.
+// The third is the one a firmware needs and the one nothing else in the
+// suite exercises, because every other suite takes `data_full` and
+// never notices which side of the branch it is on.
 //
-// THE TEST THAT MATTERS IS THAT THE BRANCH IS INVISIBLE.  Every
-// tier-two lookup asks one question — is this handle carrying a pack? —
-// and answers out of a constant or out of a `[u8]`.  If the two sides
-// ever disagreed, a program that moved its tables to external flash
-// would start normalising differently, which is the worst failure this
-// package has available to it.  So every table is queried through both
-// handles and the answers are compared.
+// The test that matters is that the branch is invisible.  Every lookup
+// behind a `UniData` asks one question, which is whether this handle is
+// carrying a pack, and answers out of a constant or out of a `[u8]`.
+// If the two sides ever disagreed, a program that moved its tables to
+// external flash would start normalising differently, which is the
+// worst failure this package has available to it.  So every table is
+// queried through both handles and the answers are compared.
 
 use std.list
 use std.str
@@ -26,9 +26,10 @@ use unorm
 
 @test
 fn test_a_pack_answers_exactly_what_the_compiled_in_tables_answer() [io]
-    // One query per tier-two table, through a handle over the caller's
-    // bytes and through the handle over the constants.  The tables are
-    // named in the comments so a failure says which one moved.
+    // One query per table behind a `UniData`, through a handle over the
+    // caller's bytes and through the handle over the constants.  The
+    // tables are named in the comments so a failure says which one
+    // moved.
     let full = udata.data_full()
     let blob = udata.pack_bytes([], full)
     match udata.data_from_pack(blob)
@@ -114,10 +115,10 @@ fn broken_at(blob: [u8], at: Int, value: Int) -> [u8]
 
 @test
 fn test_the_compact_handle_says_what_it_cannot_answer_for() [io]
-    // `data_compact` is the tier for a program that wants canonical
+    // `data_compact` is the handle for a program that wants canonical
     // composition of European text on a device and knows it.  What it
-    // gives up is every astral codepoint, and the honest form of that
-    // is `complete == false` plus `data_covers` answering before the
+    // gives up is every astral codepoint, and it says so with
+    // `complete == false` and with `data_covers` answering before the
     // call rather than a wrong answer after it.
     let small = udata.data_compact()
     let full = udata.data_full()
