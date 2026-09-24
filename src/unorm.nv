@@ -109,12 +109,18 @@ fn is_hangul(ch: Int) -> Bool
 // The jamo of a precomposed syllable, appended to `out`.
 fn hangul_decompose(out: [Int], ch: Int) -> [Int]
     let index = ch - S_BASE
-    var o = list.push(out, L_BASE + index / N_COUNT)
-    o = list.push(o, V_BASE + index % N_COUNT / T_COUNT)
+    let l = L_BASE + index / N_COUNT
+    let v = V_BASE + index % N_COUNT / T_COUNT
     let t = index % T_COUNT
     if t != 0
-        o = list.push(o, T_BASE + t)
-    o
+        push_cp(push_cp(push_cp(out, l), v), T_BASE + t)
+    else
+        push_cp(push_cp(out, l), v)
+
+// `ch` appended to `out`, and `out` answered.
+fn push_cp(mut out: [Int], ch: Int) -> [Int]
+    out = list.push(out, ch)
+    out
 
 // One codepoint's decomposition, appended to `out` and fully expanded.
 //
@@ -125,15 +131,15 @@ fn decomp_into(d: udata.UniData, out: [Int], ch: Int, compat: Bool) -> [Int]
     if is_hangul(ch)
         hangul_decompose(out, ch)
     elif udata.data_covers(d, ch) == false
-        list.push(out, ch)
+        push_cp(out, ch)
     else
         let at = udata.t_find(d, udata.T_DECOMP, ch)
         if at < 0
-            list.push(out, ch)
+            push_cp(out, ch)
         else
             let kind = udata.t_value(d, udata.T_DECOMP, at + 3, 1)
             if kind == 1 and compat == false
-                list.push(out, ch)
+                push_cp(out, ch)
             else
                 let off = udata.t_value(d, udata.T_DECOMP, at + 4, 2)
                 let n = udata.t_value(d, udata.T_DECOMP, at + 6, 1)
@@ -152,7 +158,7 @@ fn decomp_into(d: udata.UniData, out: [Int], ch: Int, compat: Bool) -> [Int]
 fn insert_ordered(d: udata.UniData, out: [Int], ch: Int) -> [Int]
     let c = combining_class(d, ch)
     if c == 0
-        list.push(out, ch)
+        push_cp(out, ch)
     else
         // Indexed from the end rather than by a cursor walking down,
         // because the loop's own bound is then the whole guarantee
@@ -168,7 +174,7 @@ fn insert_ordered(d: udata.UniData, out: [Int], ch: Int) -> [Int]
                 break
             at = n - 1 - k
         if at == n
-            list.push(out, ch)
+            push_cp(out, ch)
         else
             list.append(list.push(list.slice(out, 0, at), ch), list.slice(out, at, n))
 
@@ -313,7 +319,7 @@ pub fn normalize(d: udata.UniData, text: Str, form: UniForm) -> Str []
 // reuses one buffer instead of producing one string per input.  It is
 // the shape numfmt-nv and ansi-nv use for the same reason.
 pub fn normalize_into(out: [u8], d: udata.UniData, text: Str, form: UniForm) -> [u8] []
-    list.append(out, utbl.utf8_of(normalized_cps(d, text, form)))
+    utbl.put_all(out, utbl.utf8_of(normalized_cps(d, text, form)))
 
 // quick_check is UAX #15's quick check, which never allocates.
 //

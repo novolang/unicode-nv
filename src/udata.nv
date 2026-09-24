@@ -388,16 +388,16 @@ fn pack_bytes(out: [u8], d: UniData) -> [u8] []
     var total = PACK_HEADER + str.len(UNICODE_VERSION) + T_COUNT * 4
     for i in 0..T_COUNT
         total = total + str.len(tbl_str(i))
-    var out2 = list.append(out, utbl.bytes_of(PACK_MAGIC))
-    out2 = list.push(out2, PACK_FORMAT)
-    out2 = be4(out2, total)
-    out2 = list.push(out2, str.len(UNICODE_VERSION))
-    out2 = list.append(out2, utbl.bytes_of(UNICODE_VERSION))
+    var pack = utbl.bytes_of(PACK_MAGIC)
+    pack = list.push(pack, PACK_FORMAT)
+    pack = be4(pack, total)
+    pack = list.push(pack, str.len(UNICODE_VERSION))
+    pack = list.append(pack, utbl.bytes_of(UNICODE_VERSION))
     for i in 0..T_COUNT
-        out2 = be4(out2, str.len(tbl_str(i)))
+        pack = be4(pack, str.len(tbl_str(i)))
     for i in 0..T_COUNT
-        out2 = list.append(out2, utbl.bytes_of(tbl_str(i)))
-    out2
+        pack = list.append(pack, utbl.bytes_of(tbl_str(i)))
+    utbl.put_all(out, pack)
 
 // data_version is the Unicode version the handle's tables came from.
 pub @tier(app)

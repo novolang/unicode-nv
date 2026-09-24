@@ -131,7 +131,7 @@ fn full_of(d: udata.UniData, ch: Int, which: Int) -> [Int]
             let n = udata.t_value(d, udata.T_FULL, at + 3 + which * 3 + 2, 1)
             out = list.map(list.range(off, off + n), i => udata.t_pool(d, udata.T_FULLPOOL, i))
     if list.is_empty(out)
-        list.push(out, simple_of(d, ch, which))
+        [simple_of(d, ch, which)]
     else
         out
 
@@ -465,15 +465,15 @@ pub fn eq_fold(d: udata.UniData, a: Str, b: Str) -> Bool []
 
 // to_lower_into appends the lowercased text to a caller's buffer.
 pub fn to_lower_into(out: [u8], d: udata.UniData, text: Str, language: Str) -> [u8] []
-    list.append(out, utbl.utf8_of(map_text(d, text, M_LOWER, language)))
+    utbl.put_all(out, utbl.utf8_of(map_text(d, text, M_LOWER, language)))
 
 // to_upper_into appends the uppercased text to a caller's buffer.
 pub fn to_upper_into(out: [u8], d: udata.UniData, text: Str, language: Str) -> [u8] []
-    list.append(out, utbl.utf8_of(map_text(d, text, M_UPPER, language)))
+    utbl.put_all(out, utbl.utf8_of(map_text(d, text, M_UPPER, language)))
 
 // fold_into appends the case-folded text to a caller's buffer.
 pub fn fold_into(out: [u8], d: udata.UniData, text: Str) -> [u8] []
-    list.append(out, utbl.utf8_of(map_text(d, text, M_FOLD, LANG_ROOT)))
+    utbl.put_all(out, utbl.utf8_of(map_text(d, text, M_FOLD, LANG_ROOT)))
 
 // simple_lower is the one-codepoint lowercase mapping.
 //

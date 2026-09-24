@@ -5,6 +5,26 @@ All notable changes to unicode-nv are recorded here. The format is
 package follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 with the pre-1.0 rule that a breaking change bumps the MINOR number.
 
+## 0.1.1 — 2026-09-24
+
+The package builds under the list rule of the next toolchain, where a
+list is one list under every name that holds it and a write into it
+goes through a `var` name.  No public signature changed, and nothing
+changes under 0.9.2.
+
+### Changed
+
+- `to_lower_into`, `to_upper_into`, `fold_into`, `normalize_into` and
+  `pack_bytes` append to the caller's buffer through one private
+  helper.  Under the next toolchain the bytes land in the caller's own
+  buffer, which is what these functions are for.  A program that passes
+  a buffer and then reads the buffer as it was before the call copies it
+  first, with `list.slice(buf, 0, list.len(buf))`.
+- `pack_bytes` builds the pack in a list of its own and appends it once.
+- The private steps of decomposition push through a helper that takes
+  the list as a `mut` parameter, which is the spelling `novo fmt` gives
+  the `var` marker.
+
 ## 0.1.0 — 2026-09-18
 
 Character classes, case mapping, normalisation, grapheme and word

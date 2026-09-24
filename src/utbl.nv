@@ -295,6 +295,18 @@ fn pfind_pair(t: [u8], base: Int, n: Int, esz: Int, a: Int, b: Int) -> Int
 fn bytes_of(s: Str) -> [u8]
     bytes.to_byte_list(bytes.from_str(s))
 
+// `extra` appended to the caller's buffer, and the buffer answered.
+//
+// The buffer is appended through a local rather than through a `mut`
+// parameter.  A `mut` parameter assigned the answer of `list.append`
+// comes back with the wrong length under 0.9.2 and under the toolchain
+// after it, and the local gives the right answer under both.
+@tier(app)
+fn put_all(out: [u8], extra: [u8]) -> [u8]
+    var o = out
+    o = list.append(o, extra)
+    o
+
 // One codepoint's UTF-8 encoding.
 //
 // A named function rather than a lambda at the `list.map` call site.
