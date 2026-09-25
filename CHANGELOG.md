@@ -5,6 +5,17 @@ All notable changes to unicode-nv are recorded here. The format is
 package follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 with the pre-1.0 rule that a breaking change bumps the MINOR number.
 
+## 0.1.2 — 2026-09-25
+
+Two test helpers changed so that the tests build with novo 0.10.0
+without a warning.  Each helper wrote the last element into its list and
+answered the writer's result.  Each now writes and then answers the list
+by its own name.  The library code and its signatures are unchanged.
+
+- One private helper in `unorm` now spells its parameter marker `var`,
+  which is the spelling the novo 0.10.0 formatter prints for `mut`.  The
+  two spellings mean the same thing.
+
 ## 0.1.1 — 2026-09-24
 
 The package builds under the list rule of the next toolchain, where a

@@ -118,7 +118,7 @@ fn hangul_decompose(out: [Int], ch: Int) -> [Int]
         push_cp(push_cp(out, l), v)
 
 // `ch` appended to `out`, and `out` answered.
-fn push_cp(mut out: [Int], ch: Int) -> [Int]
+fn push_cp(var out: [Int], ch: Int) -> [Int]
     out = list.push(out, ch)
     out
 

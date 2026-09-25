@@ -246,6 +246,7 @@ fn stepped_boundaries(text: Str) -> [Int] [io]
         st = step.state
         at = at + seq_len(text, at)
     list.push(out, str.len(text))
+    out
 
 // The codepoint at byte `i`, for a suite that cannot reach `utbl`.
 fn cp_at(text: Str, i: Int) -> Int

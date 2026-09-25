@@ -112,6 +112,7 @@ fn broken_at(blob: [u8], at: Int, value: Int) -> [u8]
     var out = list.slice(blob, 0, at)
     out = list.push(out, value)
     list.append(out, list.slice(blob, at + 1, list.len(blob)))
+    out
 
 @test
 fn test_the_compact_handle_says_what_it_cannot_answer_for() [io]

@@ -1,6 +1,6 @@
 [package]
 name        = "unicode-nv"
-version     = "0.1.1"
+version     = "0.1.2"
 description = "The Unicode character database as a library: grapheme cluster segmentation by UAX #29 with an incremental state machine for a terminal that receives one codepoint at a time, display width by UAX #11 as the exact `fn(Int) -> Int` textwrap-nv already takes, the four normalisation forms, full case mapping and folding with the language-specific rules, and the category and identifier predicates a tokenizer wants.  The tables are generated from Unicode 16.0.0.  Width and breaks are always compiled in, and normalisation and case mapping arrive as a value the caller names."
 license     = "Apache-2.0"
 
