@@ -128,14 +128,14 @@ fn test_the_into_forms_append_rather_than_allocate() [io]
     let d = udata.data_full()
 
     test.case("the buffer comes back with the text appended")
-    let out = ucase.to_upper_into([], d, "ab", LANG_ROOT)
+    var out = ucase.to_upper_into([], d, "ab", LANG_ROOT)
     test.assert(list.len(out) == 2)
 
     test.case("and an existing prefix is kept, by every one of the three")
-    let out2 = ucase.fold_into(out, d, "C")
-    test.assert(list.len(out2) == 3)
-    let out3 = ucase.to_lower_into(out2, d, "D", LANG_ROOT)
-    test.assert(list.len(out3) == 4)
+    out = ucase.fold_into(out, d, "C")
+    test.assert(list.len(out) == 3)
+    out = ucase.to_lower_into(out, d, "D", LANG_ROOT)
+    test.assert(list.len(out) == 4)
 
 @test
 fn test_the_simple_forms_are_the_building_blocks_for_a_caller_s_own_rule() [io]

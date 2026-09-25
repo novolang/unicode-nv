@@ -464,15 +464,15 @@ pub fn eq_fold(d: udata.UniData, a: Str, b: Str) -> Bool []
     same
 
 // to_lower_into appends the lowercased text to a caller's buffer.
-pub fn to_lower_into(out: [u8], d: udata.UniData, text: Str, language: Str) -> [u8] []
+pub fn to_lower_into(var out: [u8], d: udata.UniData, text: Str, language: Str) -> [u8] []
     utbl.put_all(out, utbl.utf8_of(map_text(d, text, M_LOWER, language)))
 
 // to_upper_into appends the uppercased text to a caller's buffer.
-pub fn to_upper_into(out: [u8], d: udata.UniData, text: Str, language: Str) -> [u8] []
+pub fn to_upper_into(var out: [u8], d: udata.UniData, text: Str, language: Str) -> [u8] []
     utbl.put_all(out, utbl.utf8_of(map_text(d, text, M_UPPER, language)))
 
 // fold_into appends the case-folded text to a caller's buffer.
-pub fn fold_into(out: [u8], d: udata.UniData, text: Str) -> [u8] []
+pub fn fold_into(var out: [u8], d: udata.UniData, text: Str) -> [u8] []
     utbl.put_all(out, utbl.utf8_of(map_text(d, text, M_FOLD, LANG_ROOT)))
 
 // simple_lower is the one-codepoint lowercase mapping.

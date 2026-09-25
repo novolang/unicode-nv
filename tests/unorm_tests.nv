@@ -193,12 +193,12 @@ fn test_normalize_into_appends_rather_than_allocating() [io]
     let d = udata.data_full()
 
     test.case("the buffer comes back with the text appended")
-    let out = udata_buffer(d)
+    var out = udata_buffer(d)
     test.assert(list.len(out) == 2)
 
     test.case("and an existing prefix is kept")
-    let out2 = unorm.normalize_into(out, d, "c", FormNfc)
-    test.assert(list.len(out2) == 3)
+    out = unorm.normalize_into(out, d, "c", FormNfc)
+    test.assert(list.len(out) == 3)
 
 fn udata_buffer(d: udata.UniData) -> [u8] [io]
     unorm.normalize_into([], d, "ab", FormNfc)

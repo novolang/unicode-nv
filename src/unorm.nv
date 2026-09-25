@@ -107,7 +107,7 @@ fn is_hangul(ch: Int) -> Bool
     ch >= S_BASE and ch < S_BASE + S_COUNT
 
 // The jamo of a precomposed syllable, appended to `out`.
-fn hangul_decompose(out: [Int], ch: Int) -> [Int]
+fn hangul_decompose(var out: [Int], ch: Int) -> [Int]
     let index = ch - S_BASE
     let l = L_BASE + index / N_COUNT
     let v = V_BASE + index % N_COUNT / T_COUNT
@@ -127,7 +127,7 @@ fn push_cp(var out: [Int], ch: Int) -> [Int]
 // Recursive, because a decomposition's own parts may decompose.  The
 // table holds the one-step mapping, and storing the closure instead
 // would repeat every shared tail in every entry that ends with it.
-fn decomp_into(d: udata.UniData, out: [Int], ch: Int, compat: Bool) -> [Int]
+fn decomp_into(d: udata.UniData, var out: [Int], ch: Int, compat: Bool) -> [Int]
     if is_hangul(ch)
         hangul_decompose(out, ch)
     elif udata.data_covers(d, ch) == false
@@ -155,7 +155,7 @@ fn decomp_into(d: udata.UniData, out: [Int], ch: Int, compat: Bool) -> [Int]
 // of non-starters by combining class, and inserting each mark just
 // past the last one whose class is no greater is that sort, written so
 // the list is built once instead of being rewritten per swap.
-fn insert_ordered(d: udata.UniData, out: [Int], ch: Int) -> [Int]
+fn insert_ordered(d: udata.UniData, var out: [Int], ch: Int) -> [Int]
     let c = combining_class(d, ch)
     if c == 0
         push_cp(out, ch)
@@ -318,7 +318,7 @@ pub fn normalize(d: udata.UniData, text: Str, form: UniForm) -> Str []
 // function appends, so a program normalising a stream of strings
 // reuses one buffer instead of producing one string per input.  It is
 // the shape numfmt-nv and ansi-nv use for the same reason.
-pub fn normalize_into(out: [u8], d: udata.UniData, text: Str, form: UniForm) -> [u8] []
+pub fn normalize_into(var out: [u8], d: udata.UniData, text: Str, form: UniForm) -> [u8] []
     utbl.put_all(out, utbl.utf8_of(normalized_cps(d, text, form)))
 
 // quick_check is UAX #15's quick check, which never allocates.

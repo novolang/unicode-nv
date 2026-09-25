@@ -384,7 +384,7 @@ fn data_from_pack(blob: [u8]) -> ?UniData []
 // without this package shipping a second program to generate one, and
 // a caller can check a pack it was given against the tables it has.
 pub @tier(app)
-fn pack_bytes(out: [u8], d: UniData) -> [u8] []
+fn pack_bytes(var out: [u8], d: UniData) -> [u8] []
     var total = PACK_HEADER + str.len(UNICODE_VERSION) + T_COUNT * 4
     for i in 0..T_COUNT
         total = total + str.len(tbl_str(i))
@@ -435,7 +435,7 @@ fn pack_version(blob: [u8], vlen: Int) -> Str
 
 // `n` appended to a buffer as four big-endian bytes.
 @tier(app)
-fn be4(out: [u8], n: Int) -> [u8]
+fn be4(var out: [u8], n: Int) -> [u8]
     var o = out
     o = list.push(o, (n >>> 24) & 0xFF)
     o = list.push(o, (n >>> 16) & 0xFF)

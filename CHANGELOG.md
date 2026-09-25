@@ -5,6 +5,20 @@ All notable changes to unicode-nv are recorded here. The format is
 package follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 with the pre-1.0 rule that a breaking change bumps the MINOR number.
 
+## 0.1.3 — 2026-09-25
+
+The functions that append to a caller's buffer declare that buffer
+`var`: `ucase.to_lower_into`, `ucase.to_upper_into`, `ucase.fold_into`,
+`unorm.normalize_into` and `udata.pack_bytes`.  Each always wrote into
+the buffer it was given.  The next Novo release accepts such a write
+only through a parameter declared `var`, and it refuses a call that
+passes a buffer held under `let`.  A caller that passes a `var` buffer,
+a new list or a copy has nothing to change.  The answers are unchanged.
+
+- Four private helpers that append to a list take it as `var` for the
+  same reason.
+- Two tests hold the buffer they append to in a `var`.
+
 ## 0.1.2 — 2026-09-25
 
 Two test helpers changed so that the tests build with novo 0.10.0
